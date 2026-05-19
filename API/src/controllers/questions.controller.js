@@ -1,0 +1,188 @@
+import { prisma } from '../configs/db.js';
+import { success, error, paginate } from '../utils/response.js';
+
+export const questionsController = {
+  // Question Banks
+  async listBanks(req, res) {
+    try {
+      const { page = 1, limit = 20, domainId, recruiterId, search } = req.query;
+      const where = {
+        ...(domainId && { domainId }),
+        ...(recruiterId && { recruiterId }),
+        ...(req.user.role?.name === 'recruiter' && { recruiterId: req.user.id }),
+        ...(search && { name: { contains: search, mode: 'insensitive' } }),
+      };
+
+      const [banks, total] = await Promise.all([
+        prisma.questionBank.findMany({
+          where,
+          include: { domain: true, _count: { select: { questions: true } } },
+          skip: (page - 1) * limit,
+          take: parseInt(limit),
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.questionBank.count({ where }),
+      ]);
+
+      return success(res, { banks }, 200, paginate(total, page, limit));
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async createBank(req, res) {
+    try {
+      const bank = await prisma.questionBank.create({
+        data: {
+          ...req.body,
+          createdBy: req.user.id,
+          recruiterId: req.user.role?.name === 'recruiter' ? req.user.id : req.body.recruiterId,
+        },
+        include: { domain: true },
+      });
+      return success(res, { bank }, 201);
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async updateBank(req, res) {
+    try {
+      const bank = await prisma.questionBank.update({
+        where: { id: req.params.id },
+        data: req.body,
+      });
+      return success(res, { bank });
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async deleteBank(req, res) {
+    try {
+      await prisma.questionBank.delete({ where: { id: req.params.id } });
+      return success(res, { message: 'Question bank deleted' });
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  // Questions
+  async listQuestions(req, res) {
+    try {
+      const { bankId } = req.params;
+      const { page = 1, limit = 20, difficulty, type } = req.query;
+      const where = {
+        bankId,
+        ...(difficulty && { difficulty }),
+        ...(type && { type }),
+      };
+
+      const [questions, total] = await Promise.all([
+        prisma.question.findMany({
+          where,
+          skip: (page - 1) * limit,
+          take: parseInt(limit),
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.question.count({ where }),
+      ]);
+
+      return success(res, { questions }, 200, paginate(total, page, limit));
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async createQuestion(req, res) {
+    try {
+      const question = await prisma.question.create({
+        data: { ...req.body, bankId: req.params.bankId, createdBy: req.user.id },
+      });
+      return success(res, { question }, 201);
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async updateQuestion(req, res) {
+    try {
+      const question = await prisma.question.update({
+        where: { id: req.params.qid },
+        data: req.body,
+      });
+      return success(res, { question });
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async deleteQuestion(req, res) {
+    try {
+      await prisma.question.delete({ where: { id: req.params.qid } });
+      return success(res, { message: 'Question deleted' });
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async aiGenerateQuestions(req, res) {
+    try {
+      const { bankId, domain, difficulty, count = 5 } = req.body;
+
+      // Simulate AI generation (in production, call OpenAI/Gemini API)
+      const generated = Array.from({ length: count }, (_, i) => ({
+        bankId,
+        text: `${domain} Question ${i + 1}: Explain a key concept in ${domain} at ${difficulty} level.`,
+        type: i % 2 === 0 ? 'mcq' : 'text',
+        difficulty,
+        options: i % 2 === 0 ? {
+          a: 'Option A',
+          b: 'Option B',
+          c: 'Option C',
+          d: 'Option D',
+        } : null,
+        correctAnswer: i % 2 === 0 ? 'a' : null,
+        skillTags: [domain],
+        createdBy: req.user.id,
+      }));
+
+      const questions = await prisma.question.createMany({
+        data: generated,
+        skipDuplicates: true,
+      });
+
+      // Mark bank as AI generated
+      await prisma.questionBank.update({
+        where: { id: bankId },
+        data: { isAiGenerated: true },
+      });
+
+      return success(res, { generated: questions.count });
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async getQuestionsForInterview(req, res) {
+    try {
+      const { domainId, difficulty, count = 10 } = req.query;
+
+      const questions = await prisma.question.findMany({
+        where: {
+          bank: { ...(domainId && { domainId }) },
+          ...(difficulty && { difficulty }),
+        },
+        take: parseInt(count),
+        orderBy: { createdAt: 'desc' },
+      });
+
+      // Shuffle
+      const shuffled = questions.sort(() => Math.random() - 0.5);
+
+      return success(res, { questions: shuffled });
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+};

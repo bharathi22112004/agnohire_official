@@ -1,0 +1,413 @@
+// This is your Prisma schema file
+// Learn more at: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ROLES ────────────────────────────────────────────────────────────────────
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // superadmin | admin | hr | recruiter | candidate
+  permissions Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users User[]
+
+  @@map("roles")
+}
+
+// ─── USERS ────────────────────────────────────────────────────────────────────
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String?   @map("password_hash")
+  roleId       String    @map("role_id")
+  sectorId     String?   @map("sector_id")
+  isActive     Boolean   @default(true) @map("is_active")
+  avatarUrl    String?   @map("avatar_url")
+  smtpHost     String?   @map("smtp_host")
+  smtpPort     Int?      @map("smtp_port")
+  smtpUser     String?   @map("smtp_user")
+  smtpPass     String?   @map("smtp_pass")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  role              Role               @relation(fields: [roleId], references: [id])
+  sector            Sector?            @relation(fields: [sectorId], references: [id])
+  sessions          Session[]
+  oauthAccounts     OAuthAccount[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  createdSectors    Sector[]           @relation("SectorCreator")
+  questionBanks     QuestionBank[]
+  questions         Question[]
+  candidateLists    CandidateList[]
+  emailTemplates    EmailTemplate[]
+  systemConfigs     SystemConfiguration[]
+  recruiterSkills   RecruiterSkill[]
+  interviews        Interview[]        @relation("RecruiterInterviews")
+  interviewSchedules InterviewSchedule[]
+  candidateAssignments CandidateAssignment[]
+
+  @@map("users")
+}
+
+// ─── SESSIONS ─────────────────────────────────────────────────────────────────
+model Session {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  refreshToken String   @unique @map("refresh_token")
+  deviceInfo   String?  @map("device_info")
+  ipAddress    String?  @map("ip_address")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ─── OAUTH ACCOUNTS ───────────────────────────────────────────────────────────
+model OAuthAccount {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  provider          String
+  providerAccountId String   @map("provider_account_id")
+  accessToken       String?  @map("access_token")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("oauth_accounts")
+}
+
+// ─── SECTORS ──────────────────────────────────────────────────────────────────
+model Sector {
+  id        String    @id @default(uuid())
+  name      String
+  type      String
+  status    String    @default("active") // active | inactive
+  createdBy String?   @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  creator    User?       @relation("SectorCreator", fields: [createdBy], references: [id])
+  users      User[]
+  domains    Domain[]
+  candidates Candidate[]
+  candidateLists CandidateList[]
+
+  @@map("sectors")
+}
+
+// ─── DOMAINS ──────────────────────────────────────────────────────────────────
+model Domain {
+  id       String  @id @default(uuid())
+  sectorId String  @map("sector_id")
+  name     String
+  parentId String? @map("parent_id")
+
+  sector          Sector           @relation(fields: [sectorId], references: [id])
+  parent          Domain?          @relation("DomainParent", fields: [parentId], references: [id])
+  children        Domain[]         @relation("DomainParent")
+  recruiterSkills RecruiterSkill[]
+  candidates      Candidate[]
+  questionBanks   QuestionBank[]
+
+  @@map("domains")
+}
+
+// ─── RECRUITER SKILLS ─────────────────────────────────────────────────────────
+model RecruiterSkill {
+  id          String   @id @default(uuid())
+  recruiterId String   @map("recruiter_id")
+  domainId    String   @map("domain_id")
+  skillTags   Json     @default("[]") @map("skill_tags")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  recruiter User   @relation(fields: [recruiterId], references: [id])
+  domain    Domain @relation(fields: [domainId], references: [id])
+
+  @@map("recruiter_skills")
+}
+
+// ─── CANDIDATES ───────────────────────────────────────────────────────────────
+model Candidate {
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique
+  phone           String?
+  domainId        String?   @map("domain_id")
+  experienceLevel String?   @map("experience_level") // junior | mid | senior
+  skills          Json      @default("[]")
+  sectorId        String?   @map("sector_id")
+  status          String    @default("pending") // pending | assigned | interviewed | passed | failed | held
+  listId          String?   @map("list_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  domain      Domain?              @relation(fields: [domainId], references: [id])
+  sector      Sector?              @relation(fields: [sectorId], references: [id])
+  list        CandidateList?       @relation(fields: [listId], references: [id])
+  resumes     Resume[]
+  assignments CandidateAssignment[]
+  interviews  Interview[]
+  emailLogs   EmailLog[]
+
+  @@map("candidates")
+}
+
+// ─── CANDIDATE LISTS ──────────────────────────────────────────────────────────
+model CandidateList {
+  id             String   @id @default(uuid())
+  name           String
+  hrId           String   @map("hr_id")
+  sectorId       String   @map("sector_id")
+  uploadDate     DateTime @default(now()) @map("upload_date")
+  candidateCount Int      @default(0) @map("candidate_count")
+
+  hr           User                  @relation(fields: [hrId], references: [id])
+  sector       Sector                @relation(fields: [sectorId], references: [id])
+  candidates   Candidate[]
+  assignments  CandidateAssignment[]
+
+  @@map("candidate_lists")
+}
+
+// ─── CANDIDATE ASSIGNMENTS ────────────────────────────────────────────────────
+model CandidateAssignment {
+  id          String   @id @default(uuid())
+  candidateId String   @map("candidate_id")
+  listId      String   @map("list_id")
+  recruiterId String   @map("recruiter_id")
+  assignedAt  DateTime @default(now()) @map("assigned_at")
+
+  candidate Candidate     @relation(fields: [candidateId], references: [id])
+  list      CandidateList @relation(fields: [listId], references: [id])
+  recruiter User          @relation(fields: [recruiterId], references: [id])
+
+  @@map("candidate_assignments")
+}
+
+// ─── RESUMES ──────────────────────────────────────────────────────────────────
+model Resume {
+  id          String   @id @default(uuid())
+  candidateId String   @map("candidate_id")
+  fileUrl     String   @map("file_url")
+  fileName    String   @map("file_name")
+  uploadedAt  DateTime @default(now()) @map("uploaded_at")
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@map("resumes")
+}
+
+// ─── INTERVIEWS ───────────────────────────────────────────────────────────────
+model Interview {
+  id           String    @id @default(uuid())
+  candidateId  String    @map("candidate_id")
+  recruiterId  String    @map("recruiter_id")
+  status       String    @default("scheduled") // scheduled | in_progress | completed | cancelled
+  scheduledAt  DateTime? @map("scheduled_at")
+  completedAt  DateTime? @map("completed_at")
+  recordingUrl String?   @map("recording_url")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  candidate  Candidate          @relation(fields: [candidateId], references: [id])
+  recruiter  User               @relation("RecruiterInterviews", fields: [recruiterId], references: [id])
+  schedule   InterviewSchedule?
+  result     InterviewResult?
+  answers    CandidateAnswer[]
+
+  @@map("interviews")
+}
+
+// ─── INTERVIEW SCHEDULES ──────────────────────────────────────────────────────
+model InterviewSchedule {
+  id          String   @id @default(uuid())
+  interviewId String   @unique @map("interview_id")
+  recruiterId String   @map("recruiter_id")
+  date        DateTime
+  timeStart   String   @map("time_start")
+  timeEnd     String   @map("time_end")
+  linkToken   String   @unique @map("link_token")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  recruiter User      @relation(fields: [recruiterId], references: [id])
+
+  @@map("interview_schedules")
+}
+
+// ─── INTERVIEW RESULTS ────────────────────────────────────────────────────────
+model InterviewResult {
+  id               String    @id @default(uuid())
+  interviewId      String    @unique @map("interview_id")
+  aiScore          Float?    @map("ai_score")
+  recruiterDecision String?  @map("recruiter_decision") // pass | fail | hold
+  feedback         String?
+  validatedAt      DateTime? @map("validated_at")
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_results")
+}
+
+// ─── QUESTION BANKS ───────────────────────────────────────────────────────────
+model QuestionBank {
+  id            String   @id @default(uuid())
+  name          String
+  domainId      String?  @map("domain_id")
+  recruiterId   String?  @map("recruiter_id")
+  createdBy     String?  @map("created_by")
+  isAiGenerated Boolean  @default(false) @map("is_ai_generated")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  domain    Domain?    @relation(fields: [domainId], references: [id])
+  recruiter User?      @relation(fields: [recruiterId], references: [id])
+  questions Question[]
+
+  @@map("question_banks")
+}
+
+// ─── QUESTIONS ────────────────────────────────────────────────────────────────
+model Question {
+  id            String   @id @default(uuid())
+  bankId        String   @map("bank_id")
+  text          String
+  type          String   // mcq | text
+  difficulty    String   // easy | medium | hard
+  options       Json?
+  correctAnswer String?  @map("correct_answer")
+  skillTags     Json     @default("[]") @map("skill_tags")
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  bank    QuestionBank      @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  creator User?             @relation(fields: [createdBy], references: [id])
+  answers CandidateAnswer[]
+
+  @@map("questions")
+}
+
+// ─── CANDIDATE ANSWERS ────────────────────────────────────────────────────────
+model CandidateAnswer {
+  id          String   @id @default(uuid())
+  interviewId String   @map("interview_id")
+  questionId  String   @map("question_id")
+  answerText  String?  @map("answer_text")
+  score       Float?
+  timeTaken   Int?     @map("time_taken") // seconds
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  question  Question  @relation(fields: [questionId], references: [id])
+
+  @@map("candidate_answers")
+}
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false) @map("is_read")
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ─── AUDIT LOGS ───────────────────────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  role       String?
+  ipAddress  String?  @map("ip_address")
+  deviceInfo String?  @map("device_info")
+  actionType String   @map("action_type")
+  entity     String?
+  entityId   String?  @map("entity_id")
+  beforeData Json?    @map("before_data")
+  afterData  Json?    @map("after_data")
+  timestamp  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+// ─── SYSTEM CONFIGURATIONS ────────────────────────────────────────────────────
+model SystemConfiguration {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  updater User? @relation(fields: [updatedBy], references: [id])
+
+  @@map("system_configurations")
+}
+
+// ─── EMAIL TEMPLATES ──────────────────────────────────────────────────────────
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  type      String   // pass | fail | hold | invite
+  subject   String
+  bodyHtml  String   @map("body_html")
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  creator   User?      @relation(fields: [createdBy], references: [id])
+  emailLogs EmailLog[]
+
+  @@map("email_templates")
+}
+
+// ─── EMAIL LOGS ───────────────────────────────────────────────────────────────
+model EmailLog {
+  id          String    @id @default(uuid())
+  templateId  String?   @map("template_id")
+  toEmail     String    @map("to_email")
+  candidateId String?   @map("candidate_id")
+  status      String    @default("pending") // pending | sent | failed
+  sentAt      DateTime? @map("sent_at")
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  template  EmailTemplate? @relation(fields: [templateId], references: [id])
+  candidate Candidate?     @relation(fields: [candidateId], references: [id])
+
+  @@map("email_logs")
+}
+
+// ─── ANALYTICS SNAPSHOTS ──────────────────────────────────────────────────────
+model AnalyticsSnapshot {
+  id           String   @id @default(uuid())
+  scopeType    String   @map("scope_type") // global | sector | recruiter
+  scopeId      String?  @map("scope_id")
+  metrics      Json
+  snapshotDate DateTime @default(now()) @map("snapshot_date")
+
+  @@map("analytics_snapshots")
+}
