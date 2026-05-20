@@ -95,7 +95,8 @@ export const emailService = {
   },
 
   async sendInterviewInvite({ candidate, recruiter, schedule, linkToken }) {
-    const interviewLink = `${process.env.CLIENT_URL}/interview?token=${linkToken}`;
+    const recruiterId = recruiter?.id || '';
+    const interviewLink = `${process.env.CLIENT_URL}/interview?token=${linkToken}&rid=${recruiterId}`;
 
     const html = `
       <!DOCTYPE html>
@@ -146,7 +147,10 @@ export const emailService = {
 
               <p style="color: #475569; font-size: 14px;"><strong>Instructions:</strong> Ensure you are in a well-lit, quiet environment. You will need a working webcam and microphone. The link below is unique to you and should not be shared.</p>
 
-              <a href="${interviewLink}" class="btn">Start Interview</a>
+              <p style="color: #475569; margin: 24px 0 8px; font-size: 14px;">Click the secure link below to launch your assessment session:</p>
+              <div style="word-break: break-all; margin: 8px 0 24px; background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px dashed #cbd5e1; font-family: monospace; text-align: center; font-size: 13px;">
+                <a href="${interviewLink}" style="color: #4f46e5; font-weight: bold; text-decoration: underline;">${interviewLink}</a>
+              </div>
 
               <p style="color: #94a3b8; font-size: 12px;">If you did not expect this invitation, please contact us immediately. This link will expire after your scheduled time.</p>
             </div>

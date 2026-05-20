@@ -12,6 +12,7 @@ export const corsOptions = {
     if (!origin || allowed.includes(origin)) {
       callback(null, true);
     } else {
+      console.log(`[CORS Blocked] Origin requested: "${origin}"`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -19,3 +20,4 @@ export const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token'],
 };
+

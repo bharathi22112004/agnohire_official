@@ -26,6 +26,7 @@
   --bg-surface-2: #f5f0e7;
   --bg-surface-3: #ebe3d6;
   --bg-overlay: rgba(20, 29, 38, 0.46);
+  --bg-card-header: rgba(248, 250, 252, 0.9);
 
   --text-primary: #17212b;
   --text-secondary: #475260;
@@ -332,9 +333,11 @@ code, pre, kbd {
   transform: translateY(-1px);
 }
 
-.btn-sm { min-height: 34px; padding: 7px 13px; font-size: 13px; }
+.btn-xs { padding: 4px 10px; font-size: 12px; border-radius: var(--radius-sm); }
+.btn-sm { min-height: 34px; padding: 7px 13px; font-size: 13px; border-radius: var(--radius-sm); }
 .btn-lg { min-height: 48px; padding: 13px 24px; font-size: 15px; }
-.btn-icon { width: 40px; min-width: 40px; padding: 0; }
+.btn-xl { padding: 14px 28px; font-size: 16px; font-weight: 600; }
+.btn-icon { width: 40px; min-width: 40px; padding: 0; border-radius: var(--radius-md); }
 .btn-block { width: 100%; }
 
 .input-wrapper {

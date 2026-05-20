@@ -49,4 +49,10 @@ export const socketService = {
       });
     }
   },
+
+  emitProctoringAlert(recruiterId, data) {
+    if (io) {
+      io.to(`user:${recruiterId}`).emit('interview:proctoring_alert', data);
+    }
+  },
 };

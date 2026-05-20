@@ -81,6 +81,8 @@ export function Header({ onMenuToggle }) {
 
       {/* Utilities */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+
+        {/* Notifications — only for non-candidates */}
         {!isCandidate && (
           <div style={{ position: 'relative' }} ref={notifRef}>
             <button

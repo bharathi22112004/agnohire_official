@@ -216,21 +216,24 @@ model Resume {
 
 // ─── INTERVIEWS ───────────────────────────────────────────────────────────────
 model Interview {
-  id           String    @id @default(uuid())
-  candidateId  String    @map("candidate_id")
-  recruiterId  String    @map("recruiter_id")
-  status       String    @default("scheduled") // scheduled | in_progress | completed | cancelled
-  scheduledAt  DateTime? @map("scheduled_at")
-  completedAt  DateTime? @map("completed_at")
-  recordingUrl String?   @map("recording_url")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id               String    @id @default(uuid())
+  candidateId      String    @map("candidate_id")
+  recruiterId      String    @map("recruiter_id")
+  status           String    @default("scheduled") // scheduled | in_progress | completed | cancelled
+  scheduledAt      DateTime? @map("scheduled_at")
+  completedAt      DateTime? @map("completed_at")
+  recordingUrl     String?   @map("recording_url")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  candidate  Candidate          @relation(fields: [candidateId], references: [id])
-  recruiter  User               @relation("RecruiterInterviews", fields: [recruiterId], references: [id])
-  schedule   InterviewSchedule?
-  result     InterviewResult?
-  answers    CandidateAnswer[]
+  candidate        Candidate            @relation(fields: [candidateId], references: [id])
+  recruiter        User                 @relation("RecruiterInterviews", fields: [recruiterId], references: [id])
+  schedule         InterviewSchedule?
+  result           InterviewResult?
+  answers          CandidateAnswer[]
+  session          InterviewSession?
+  faceRegistration FaceRegistration?
+  violations       ProctoringViolation[]
 
   @@map("interviews")
 }
@@ -410,4 +413,56 @@ model AnalyticsSnapshot {
   snapshotDate DateTime @default(now()) @map("snapshot_date")
 
   @@map("analytics_snapshots")
+}
+
+// ─── INTERVIEW SESSIONS ────────────────────────────────────────────────────────
+model InterviewSession {
+  id                 String    @id @default(uuid())
+  interviewId        String    @unique @map("interview_id")
+  otp                String?
+  otpExpiresAt       DateTime? @map("otp_expires_at")
+  isVerified         Boolean   @default(false) @map("is_verified")
+  browserInfo        String?   @map("browser_info")
+  osInfo             String?   @map("os_info")
+  ipAddress          String?   @map("ip_address")
+  deviceFingerprint  String?   @map("device_fingerprint")
+  envChecked         Boolean   @default(false) @map("env_checked")
+  cameraChecked      Boolean   @default(false) @map("camera_checked")
+  micChecked         Boolean   @default(false) @map("mic_checked")
+  speakerChecked     Boolean   @default(false) @map("speaker_checked")
+  speedChecked       Boolean   @default(false) @map("speed_checked")
+  fullscreenChecked  Boolean   @default(false) @map("fullscreen_checked")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  interview          Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_sessions")
+}
+
+// ─── FACE REGISTRATIONS ───────────────────────────────────────────────────────
+model FaceRegistration {
+  id             String   @id @default(uuid())
+  interviewId    String   @unique @map("interview_id")
+  faceImageUrl   String   @map("face_image_url") // Data URL or base64 string
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("face_registrations")
+}
+
+// ─── PROCTORING VIOLATIONS ────────────────────────────────────────────────────
+model ProctoringViolation {
+  id             String   @id @default(uuid())
+  interviewId    String   @map("interview_id")
+  violationType  String   @map("violation_type") // tab_switch | focus_loss | resize | eye_movement | noise | no_face | multiple_faces
+  description    String
+  screenshotUrl  String?  @map("screenshot_url")
+  severity       String   @default("low") // low | medium | high
+  timestamp      DateTime @default(now())
+
+  interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("proctoring_violations")
 }

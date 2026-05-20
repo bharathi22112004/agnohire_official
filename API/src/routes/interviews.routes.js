@@ -8,6 +8,11 @@ const router = Router();
 
 // Public routes (candidate interview flow — no auth)
 router.get('/token/:token', interviewsController.getByToken);
+router.post('/token/:token/verify-send-otp', interviewsController.verifySendOtp);
+router.post('/token/:token/verify-otp', interviewsController.verifyOtp);
+router.post('/:id/register-face', interviewsController.registerFace);
+router.post('/:id/log-violation', interviewsController.logViolation);
+router.get('/:id/questions', interviewsController.getQuestions);
 router.post('/:id/start', interviewsController.startInterview);
 router.post('/:id/submit', interviewsController.submitAnswers);
 
