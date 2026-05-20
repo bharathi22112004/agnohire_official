@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, BookOpen, User, HelpCircle, Eye, Trash2, Cpu, FileText, CheckCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -27,13 +27,15 @@ export default function QuestionBank() {
   const [loadingQuestions, setLoadingQuestions] = useState(false);
 
   // Forms
-  const [bankForm, setBankForm] = useState({ name: '', domainId: '', recruiterId: '' });
+  const [bankForm, setBankForm] = useState({ name: '', domainId: '', recruiterId: '', file: null });
   const [qForm, setQForm] = useState({ text: '', type: 'mcq', difficulty: 'medium', optionA: '', optionB: '', optionC: '', optionD: '', correctAnswer: 'a', skillTags: '' });
   const [aiForm, setAiForm] = useState({ difficulty: 'medium', count: 5 });
+  const [activeTab, setActiveTab] = useState('upload'); // 'upload' or 'manual'
 
   const [submitting, setSubmitting] = useState(false);
 
   const user = useAuthStore(state => state.user);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     loadData();
@@ -60,13 +62,31 @@ export default function QuestionBank() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.post('/questions/banks', bankForm);
-      toast.success('Question Bank created');
+      if (activeTab === 'upload' && bankForm.file) {
+        const formData = new FormData();
+        formData.append('name', bankForm.name);
+        if (bankForm.domainId) formData.append('domainId', bankForm.domainId);
+        formData.append('file', bankForm.file);
+
+        await api.post('/questions/banks/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast.success('Document parsed and Question Bank created');
+      } else {
+        await api.post('/questions/banks', {
+          name: bankForm.name,
+          domainId: bankForm.domainId,
+          recruiterId: bankForm.recruiterId
+        });
+        toast.success('Empty Question Bank created');
+      }
+      
       setShowCreateBank(false);
-      setBankForm({ name: '', domainId: '', recruiterId: '' });
+      setBankForm({ name: '', domainId: '', recruiterId: '', file: null });
+      setActiveTab('upload');
       loadData();
-    } catch {
-      toast.error('Failed to create question bank');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create question bank');
     } finally {
       setSubmitting(false);
     }
@@ -140,6 +160,17 @@ export default function QuestionBank() {
     }
   }
 
+  async function handleDeleteBank(bankId) {
+    if (!window.confirm('Are you sure you want to delete this Question Bank? All associated questions will also be deleted.')) return;
+    try {
+      await api.delete(`/questions/banks/${bankId}`);
+      toast.success('Question Bank deleted');
+      setBanks(banks.filter(b => b.id !== bankId));
+    } catch {
+      toast.error('Failed to delete question bank');
+    }
+  }
+
   async function handleDeleteQuestion(qid) {
     try {
       await api.delete(`/questions/banks/${activeBank.id}/questions/${qid}`);
@@ -186,11 +217,21 @@ export default function QuestionBank() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{bank.name}</h3>
-                  {bank.isAiGenerated && (
-                    <Badge variant="brand">
-                      <Cpu size={11} style={{ marginRight: 4 }} /> AI SEEDED
-                    </Badge>
-                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {bank.isAiGenerated && (
+                      <Badge variant="brand">
+                        <Cpu size={11} style={{ marginRight: 4 }} /> AI SEEDED
+                      </Badge>
+                    )}
+                    <button 
+                      onClick={() => handleDeleteBank(bank.id)} 
+                      className="btn btn-ghost btn-sm btn-icon" 
+                      style={{ color: 'var(--color-danger)', padding: 4 }}
+                      title="Delete Question Bank"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
@@ -223,15 +264,34 @@ export default function QuestionBank() {
       <Modal
         isOpen={showCreateBank}
         onClose={() => setShowCreateBank(false)}
-        title="New Question Bank Template"
+        title="Question Bank Workspace"
         size="md"
         footer={
           <>
             <Button variant="ghost" onClick={() => setShowCreateBank(false)}>Cancel</Button>
-            <Button onClick={handleCreateBank} loading={submitting}>Create Bank</Button>
+            <Button onClick={handleCreateBank} loading={submitting}>
+              {activeTab === 'upload' ? 'Upload & Extract Questions' : 'Create Bank'}
+            </Button>
           </>
         }
       >
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
+          <button 
+            type="button"
+            onClick={() => setActiveTab('upload')}
+            className={`btn btn-sm ${activeTab === 'upload' ? 'btn-primary' : 'btn-ghost'}`}
+          >
+            <FileText size={14} style={{ marginRight: 6 }} /> Document Upload
+          </button>
+          <button 
+            type="button"
+            onClick={() => setActiveTab('manual')}
+            className={`btn btn-sm ${activeTab === 'manual' ? 'btn-primary' : 'btn-ghost'}`}
+          >
+            <Plus size={14} style={{ marginRight: 6 }} /> Manual Creation
+          </button>
+        </div>
+
         <form onSubmit={handleCreateBank} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Input
             label="Template Name"
@@ -253,16 +313,80 @@ export default function QuestionBank() {
             ))}
           </Select>
 
-          <Select
-            label="Assigned Recruiter (Optional)"
-            value={bankForm.recruiterId}
-            onChange={e => setBankForm({ ...bankForm, recruiterId: e.target.value })}
-          >
-            <option value="">No Recruiter (Unassigned)</option>
-            {recruiters.map(r => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </Select>
+          {activeTab === 'upload' && (
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                Upload Assessment Document (PDF or Word)
+              </label>
+              <div 
+                style={{
+                  border: '2px dashed var(--color-primary-300)',
+                  borderRadius: 12,
+                  padding: 32,
+                  textAlign: 'center',
+                  background: 'var(--bg-surface)',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s',
+                  position: 'relative'
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className="hover:bg-indigo-50 dark:hover:bg-slate-800"
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={e => {
+                    if (e.target.files && e.target.files[0]) {
+                      setBankForm({ ...bankForm, file: e.target.files[0] });
+                    }
+                  }}
+                />
+                {!bankForm.file ? (
+                  <>
+                    <FileText size={32} style={{ margin: '0 auto 12px', color: 'var(--color-primary-400)' }} />
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-primary-600)' }}>
+                      Click to upload Document
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                      Supports PDF or DOCX formats
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={32} style={{ margin: '0 auto 12px', color: 'var(--color-success)' }} />
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-success)' }}>
+                      {bankForm.file.name}
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                      {(bankForm.file.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setBankForm({ ...bankForm, file: null }); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      style={{ marginTop: 12, fontSize: 12, color: 'var(--color-danger)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Remove File
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'manual' && (
+            <Select
+              label="Assigned Recruiter (Optional)"
+              value={bankForm.recruiterId}
+              onChange={e => setBankForm({ ...bankForm, recruiterId: e.target.value })}
+            >
+              <option value="">No Recruiter (Unassigned)</option>
+              {recruiters.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </Select>
+          )}
         </form>
       </Modal>
 

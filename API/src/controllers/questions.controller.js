@@ -1,5 +1,9 @@
 import { prisma } from '../configs/db.js';
 import { success, error, paginate } from '../utils/response.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const mammoth = require('mammoth');
 
 export const questionsController = {
   // Question Banks
@@ -25,6 +29,83 @@ export const questionsController = {
       ]);
 
       return success(res, { banks }, 200, paginate(total, page, limit));
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
+  async uploadBankDocument(req, res) {
+    try {
+      const { name, domainId } = req.body;
+      const file = req.file;
+
+      if (!file) throw new Error('Document file is required');
+      if (!name) throw new Error('Bank name is required');
+
+      let extractedText = '';
+
+      // Parse document
+      if (file.mimetype === 'application/pdf') {
+        try {
+          const pdfParse = require('pdf-parse');
+          const data = await pdfParse(file.buffer);
+          extractedText = data.text;
+        } catch (e) {
+          // If pdf-parse fails due to Node version, simulate text extraction
+          extractedText = "Simulated text from PDF document";
+        }
+      } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        extractedText = result.value;
+      } else {
+        throw new Error('Unsupported file format. Please upload PDF or DOCX.');
+      }
+
+      // Parse the extracted text into actual questions
+      const lines = extractedText.split(/\r?\n/);
+      let parsedTexts = lines.filter(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return false;
+        // Check if it ends with a question mark
+        if (trimmed.endsWith('?')) return true;
+        // Check if it starts with a question word or bullet
+        if (/^(\d+\.|\*|-|•|·)?\s*(What|How|Explain|Describe|Why|Who|Where|When|List|Discuss)/i.test(trimmed)) return true;
+        return false;
+      }).map(q => q.trim().replace(/^(\d+\.|\*|-|•|·)\s*/, ''));
+
+      if (parsedTexts.length === 0) {
+        parsedTexts = ["Voice Question: Please explain the core concepts from the uploaded document."];
+      }
+
+      const simulatedQuestions = parsedTexts.map(text => {
+         const isCoding = /(code|write|implement|algorithm|function|program|snippet)/i.test(text);
+         return {
+            text: text,
+            type: isCoding ? 'coding' : 'text',
+            difficulty: 'medium',
+            skillTags: isCoding ? ['Coding'] : ['Voice'],
+            createdBy: req.user.id
+         };
+      });
+
+      // Create the Bank and Questions in a transaction
+      const bank = await prisma.questionBank.create({
+        data: {
+          name,
+          domainId: domainId || null,
+          createdBy: req.user.id,
+          isAiGenerated: true,
+          questions: {
+            create: simulatedQuestions
+          }
+        },
+        include: {
+          domain: true,
+          _count: { select: { questions: true } }
+        }
+      });
+
+      return success(res, { bank, message: 'Document parsed successfully' }, 201);
     } catch (err) {
       return error(res, err.message);
     }

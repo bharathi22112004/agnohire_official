@@ -7,7 +7,11 @@ const router = Router();
 router.use(authMiddleware);
 
 // Question Banks
+import multer from 'multer';
+const upload = multer({ storage: multer.memoryStorage() });
+
 router.get('/banks', questionsController.listBanks);
+router.post('/banks/upload', rbac('superadmin', 'admin', 'recruiter'), upload.single('file'), questionsController.uploadBankDocument);
 router.post('/banks', rbac('superadmin', 'admin', 'recruiter'), questionsController.createBank);
 router.put('/banks/:id', rbac('superadmin', 'admin', 'recruiter'), questionsController.updateBank);
 router.delete('/banks/:id', rbac('superadmin', 'admin', 'recruiter'), questionsController.deleteBank);

@@ -15,11 +15,14 @@ export default function App() {
     <>
       <AppRouter />
       <Toaster
-        position="top-right"
+        position="top-center"
+        containerStyle={{
+          top: 16,
+        }}
         toastOptions={{
           duration: 4000,
           style: {
-            fontFamily: 'DM Sans, sans-serif',
+            fontFamily: 'Inter, system-ui, sans-serif',
             fontSize: 13,
             background: 'var(--bg-surface)',
             color: 'var(--text-primary)',

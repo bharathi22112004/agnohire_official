@@ -79,6 +79,13 @@ export const interviewsController = {
         });
       }
 
+      await socketService.notify(recruiterId, {
+        type: 'interview_scheduled',
+        title: 'Interview Scheduled',
+        message: `An interview has been scheduled with candidate for ${new Date(date).toLocaleDateString()} at ${timeStart}.`,
+        metadata: { interviewId: interview.id, candidateId },
+      });
+
       return success(res, { interview, linkToken }, 201);
     } catch (err) {
       return error(res, err.message);

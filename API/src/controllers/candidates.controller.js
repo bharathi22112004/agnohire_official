@@ -4,6 +4,7 @@ import { success, error, paginate } from '../utils/response.js';
 import { v4 as uuidv4 } from 'uuid';
 import { emailService } from '../services/email.service.js';
 import { configService } from '../services/config.service.js';
+import { socketService } from '../services/socket.service.js';
 import Papa from 'papaparse';
 import fs from 'fs';
 import path from 'path';
@@ -207,6 +208,26 @@ export const candidatesController = {
             where: { id: listId },
             data: { candidateCount: imported },
           });
+
+          // Notify Admin and HR about successful list upload
+          const notifyUsers = await prisma.user.findMany({
+            where: {
+              role: { name: { in: ['admin', 'superadmin', 'hr'] } },
+              sectorId: effectiveSectorId,
+              isActive: true,
+              deletedAt: null,
+            },
+            select: { id: true }
+          });
+          
+          if (notifyUsers.length > 0) {
+            await socketService.notifyMany(notifyUsers.map(u => u.id), {
+              type: 'list_uploaded',
+              title: 'Candidate List Uploaded',
+              message: `A new candidate list "${req.body.listName || 'Uploaded'}" with ${imported} candidates has been added.`,
+              metadata: { listId },
+            });
+          }
         }
       }
 
@@ -260,6 +281,15 @@ export const candidatesController = {
       await prisma.candidate.updateMany({
         where: { id: { in: candidateIds } },
         data: { status: 'assigned' },
+      });
+
+      // Notify recruiters
+      const uniqueRecruiterIds = [...new Set(recruiterIds)];
+      await socketService.notifyMany(uniqueRecruiterIds, {
+        type: 'candidates_assigned',
+        title: 'New Candidates Assigned',
+        message: `You have been assigned new candidates to interview.`,
+        metadata: { listId },
       });
 
       return success(res, { assigned: assignments.length });
@@ -374,6 +404,25 @@ export const candidatesController = {
         }
 
         scheduledCandidates.push(candidateId);
+      }
+
+      // Group by recruiter and notify
+      const candidatesByRecruiter = await prisma.interview.findMany({
+        where: { candidateId: { in: scheduledCandidates }, status: 'scheduled' },
+        select: { recruiterId: true, candidateId: true }
+      });
+
+      const recruiterMap = new Map();
+      for (const item of candidatesByRecruiter) {
+        recruiterMap.set(item.recruiterId, (recruiterMap.get(item.recruiterId) || 0) + 1);
+      }
+
+      for (const [recruiterId, count] of recruiterMap.entries()) {
+        await socketService.notify(recruiterId, {
+          type: 'bulk_scheduled',
+          title: 'Interviews Scheduled',
+          message: `${count} interview(s) have been scheduled for your candidates.`,
+        });
       }
 
       return success(res, { scheduledCount: scheduledCandidates.length, scheduledCandidates });

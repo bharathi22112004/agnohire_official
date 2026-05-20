@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
+import { Sidebar } from '../components/layout/Sidebar';
 import { ThemeCustomizer } from '../components/layout/ThemeCustomizer';
 import { socketService } from '../services/socket.service';
 import { useAuthStore } from '../store/authStore';
-
 
 export function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -26,10 +25,8 @@ export function DashboardLayout() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
-
       <div className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <Header onMenuToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
-
         <motion.main
           className="page-content"
           key={location.pathname}
@@ -40,7 +37,6 @@ export function DashboardLayout() {
           <Outlet />
         </motion.main>
       </div>
-
       <ThemeCustomizer />
     </div>
   );

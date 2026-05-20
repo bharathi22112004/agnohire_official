@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bell, Moon, Sun, Search, Menu } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useThemeStore } from '../../store/themeStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useAuthStore } from '../../store/authStore';
+import { useConfigStore } from '../../store/configStore';
 import { Avatar } from '../ui/Avatar';
 import { formatRelativeTime } from '../../utils/cn';
 import { ProfileModal } from './ProfileModal';
@@ -12,14 +12,19 @@ import api from '../../services/api';
 
 export function Header({ onMenuToggle }) {
   const location = useLocation();
-  const { theme, toggleTheme } = useThemeStore();
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore();
   const { user, clearAuth } = useAuthStore();
+  const { fetchConfigs } = useConfigStore();
+  
   const [showNotif, setShowNotif] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const notifRef = useRef(null);
   const userDropdownRef = useRef(null);
+
+  useEffect(() => {
+    fetchConfigs();
+  }, [fetchConfigs]);
 
   useEffect(() => {
     // Load notifications on mount
@@ -64,19 +69,18 @@ export function Header({ onMenuToggle }) {
       </button>
 
       {/* Breadcrumb / Location path */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>
-        <span style={{ textTransform: 'capitalize' }}>{user?.role?.name || 'Home'}</span>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', minWidth: 0, overflow: 'hidden' }}>
+        <span style={{ textTransform: 'capitalize', whiteSpace: 'nowrap' }}>{user?.role?.name || 'Home'}</span>
         {location.pathname.split('/').filter(Boolean).slice(1).map(part => (
-          <div key={part} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div key={part} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <span>/</span>
-            <span style={{ color: 'var(--text-primary)', textTransform: 'capitalize' }}>{part.replace('-', ' ')}</span>
+            <span style={{ color: 'var(--text-primary)', textTransform: 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{part.replace('-', ' ')}</span>
           </div>
         ))}
       </div>
 
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-
-        {/* Notifications — only for non-candidates */}
+      {/* Utilities */}
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
         {!isCandidate && (
           <div style={{ position: 'relative' }} ref={notifRef}>
             <button
@@ -85,7 +89,7 @@ export function Header({ onMenuToggle }) {
               style={{ position: 'relative' }}
               title="Notifications"
             >
-              <Bell size={18} />
+              <Bell size={20} />
               {unreadCount > 0 && (
                 <span
                   style={{
@@ -123,7 +127,7 @@ export function Header({ onMenuToggle }) {
                     {unreadCount > 0 && (
                       <button
                         onClick={handleMarkAllRead}
-                        style={{ fontSize: 12, color: 'var(--color-primary-500)', background: 'none', border: 'none', cursor: 'pointer' }}
+                        style={{ fontSize: 12, color: 'var(--color-primary-600)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
                       >
                         Mark all read
                       </button>
@@ -148,7 +152,7 @@ export function Header({ onMenuToggle }) {
                           padding: '12px 12px',
                           borderBottom: '1px solid var(--border-color)',
                           cursor: 'pointer',
-                          background: n.isRead ? 'transparent' : 'rgba(99,102,241,0.04)',
+                          background: n.isRead ? 'transparent' : 'rgba(99,102,241,0.06)',
                           transition: 'background 0.1s',
                         }}
                       >
@@ -184,7 +188,8 @@ export function Header({ onMenuToggle }) {
         <div style={{ position: 'relative' }} ref={userDropdownRef}>
           <button
             onClick={() => setShowUserDropdown(!showUserDropdown)}
-            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+            style={{ background: 'var(--bg-surface-solid)', border: '1px solid var(--border-color)', padding: '5px 12px 5px 5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderRadius: '9999px', transition: 'background 0.2s, border-color 0.2s', boxShadow: 'var(--shadow-sm)' }}
+            className="hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <Avatar name={user?.name} src={user?.avatarUrl} size="sm" />
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }} className="hide-mobile">
@@ -205,7 +210,6 @@ export function Header({ onMenuToggle }) {
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
               >
-                {/* User Info Header */}
                 <div style={{ padding: '6px 12px 10px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
                   <p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {user?.name}
@@ -226,7 +230,7 @@ export function Header({ onMenuToggle }) {
                     setShowProfileModal(true);
                   }}
                   className="btn btn-ghost btn-block"
-                  style={{ justifyContent: 'flex-start', fontSize: 12, padding: '8px 12px', fontWeight: 600, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'transparent', textAlign: 'left' }}
+                  style={{ justifyContent: 'flex-start', fontSize: 13, padding: '8px 12px', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', background: 'transparent', textAlign: 'left' }}
                 >
                   Profile & SMTP settings
                 </button>
@@ -237,7 +241,7 @@ export function Header({ onMenuToggle }) {
                     window.location.reload();
                   }}
                   className="btn btn-ghost btn-block"
-                  style={{ justifyContent: 'flex-start', fontSize: 12, padding: '8px 12px', fontWeight: 600, borderRadius: 8, color: 'var(--color-danger)', border: 'none', cursor: 'pointer', background: 'transparent', textAlign: 'left' }}
+                  style={{ justifyContent: 'flex-start', fontSize: 13, padding: '8px 12px', fontWeight: 600, borderRadius: 'var(--radius-sm)', color: 'var(--color-danger)', border: 'none', cursor: 'pointer', background: 'transparent', textAlign: 'left' }}
                 >
                   Logout
                 </button>
@@ -245,8 +249,6 @@ export function Header({ onMenuToggle }) {
             )}
           </AnimatePresence>
         </div>
-
-        {/* Profile settings modal */}
         <ProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
       </div>
     </header>

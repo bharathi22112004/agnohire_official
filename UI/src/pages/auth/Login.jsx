@@ -90,7 +90,7 @@ export default function Login() {
   return (
     <div>
       <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 28, fontWeight: 800, marginBottom: 8 }}>
+        <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 8 }}>
           Welcome back
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>
@@ -162,7 +162,6 @@ export default function Login() {
             fontWeight: 500,
             color: 'var(--text-primary)',
             transition: 'all 0.15s',
-            fontFamily: 'DM Sans, sans-serif',
           }}
         >
           <svg width="18" height="18" viewBox="0 0 48 48">
@@ -204,7 +203,7 @@ export default function Login() {
             }}
           >
             <span style={{ color: 'var(--color-primary-500)', fontWeight: 600 }}>{role}</span>
-            {' — '}{email}
+            {' - '}{email}
           </button>
         ))}
       </div>

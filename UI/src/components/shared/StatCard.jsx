@@ -70,7 +70,7 @@ export function ChartCard({ title, subtitle, children, action }) {
         marginBottom: 24,
       }}>
         <div>
-          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0, fontFamily: 'Geist, sans-serif' }}>{title}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>{title}</h3>
           {subtitle && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 0' }}>{subtitle}</p>}
         </div>
         {action}
