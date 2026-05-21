@@ -1235,29 +1235,29 @@ export default function InterviewRoom() {
   }
 
   return (
-    <div className="dark min-h-screen bg-[#060814] text-white flex flex-col font-sans selection:bg-blue-500/30 selection:text-white">
+    <div className="dark min-h-screen bg-[#080B12] text-white flex flex-col font-sans selection:bg-blue-500/30 selection:text-white">
       {/* Top Banner Navigation */}
-      <header className="px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-[#0C101F] border-b border-slate-900 text-white">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <span className="text-white font-extrabold text-xl tracking-tighter">A</span>
+      <header className="h-[106px] px-10 flex items-center justify-between sticky top-0 z-40 bg-[#11141A] border-b border-[#252A35] text-white">
+        <div className="flex items-center gap-6">
+          <div className="w-16 h-[62px] rounded-[18px] bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <span className="text-white font-extrabold text-3xl tracking-tighter">A</span>
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-white leading-none">AgnoHire</h1>
+            <h1 className="text-[32px] font-extrabold tracking-tight text-white leading-none">AgnoHire</h1>
           </div>
         </div>
 
         {phase === PHASE.INTERVIEW && (
-          <div className="flex items-center gap-4">
-            <div className="border border-blue-500/30 bg-[#060814] px-4 py-2 rounded-full flex items-center gap-2 text-blue-400 font-bold text-xs tracking-wider shadow-inner">
-              <span className="text-slate-500 text-[10px] font-mono">TIME REMAINING</span>
-              <span className="font-mono text-sm font-black">
+          <div className="flex items-center gap-6">
+            <div className="h-[61px] min-w-[348px] border-2 border-blue-600/55 bg-[#111827]/50 px-8 rounded-full flex items-center justify-center gap-4 text-blue-400 font-bold tracking-wider shadow-inner">
+              <span className="text-[#6C86BA] text-lg font-mono uppercase tracking-[0.22em]">Time Remaining</span>
+              <span className="font-mono text-[28px] font-black tracking-normal">
                 {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
               </span>
             </div>
 
-            <button className="w-10 h-10 border border-slate-800 bg-[#060814] rounded-xl flex items-center justify-center hover:bg-slate-800 transition-colors cursor-pointer text-slate-400 hover:text-white">
-              <SlidersHorizontal className="w-4 h-4" />
+            <button className="w-[63px] h-[61px] border-2 border-[#252A35] bg-[#0E121B] rounded-[16px] flex items-center justify-center hover:bg-slate-800 transition-colors cursor-pointer text-blue-300/80 hover:text-white">
+              <Square className="w-5 h-5" />
             </button>
           </div>
         )}
@@ -1270,7 +1270,7 @@ export default function InterviewRoom() {
           {phase === PHASE.INTERVIEW && q && (
             <motion.div
               key="interview"
-              className="relative w-full min-h-[calc(100vh-72px)] bg-[#060814] text-slate-200 font-sans"
+              className="relative w-full min-h-[calc(100vh-106px)] bg-[#080B12] text-slate-200 font-sans"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1278,19 +1278,19 @@ export default function InterviewRoom() {
               {(() => {
                 // Shared camera widget
                 const renderCandidateCameraCard = () => (
-                  <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex flex-col gap-4">
+                  <div className="bg-[#10141C] border-2 border-[#202638] rounded-[24px] shadow-lg flex flex-col overflow-hidden">
                     {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white uppercase tracking-widest font-mono flex items-center gap-2">
-                        <Square className="w-4 h-4 text-slate-500" /> Camera (live)
+                    <div className="h-[78px] px-8 flex items-center justify-between border-b border-[#202638]">
+                      <span className="text-lg font-semibold text-[#6B8BC5] tracking-[0.18em] font-mono flex items-center gap-5">
+                        <Square className="w-3.5 h-3.5 text-blue-300/80" /> Camera (live)
                       </span>
-                      <span className="text-emerald-400 border border-emerald-500/20 bg-emerald-950/20 px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono tracking-widest uppercase">
+                      <span className="text-emerald-400 border-2 border-emerald-500/60 bg-emerald-950/30 px-5 py-2 rounded-lg text-lg font-semibold font-mono">
                         Active
                       </span>
                     </div>
 
                     {/* Camera view inside card */}
-                    <div className="bg-[#060814] border border-slate-800 rounded-xl overflow-hidden aspect-video relative flex items-center justify-center shadow-inner">
+                    <div className="bg-[#02070A] overflow-hidden aspect-[4/3] relative flex items-center justify-center shadow-inner">
                       {webcamOn ? (
                         <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
                       ) : (
@@ -1315,35 +1315,33 @@ export default function InterviewRoom() {
                         className="absolute inset-0 pointer-events-none opacity-20"
                         style={{
                           backgroundImage: `
-                            linear-gradient(rgba(34, 211, 238, 0.1) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(34, 211, 238, 0.1) 1px, transparent 1px)
+                            linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px)
                           `,
-                          backgroundSize: '20px 20px'
+                          backgroundSize: '36px 36px'
                         }}
                       />
 
                       {/* Cyan L-shaped anchors */}
-                      <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-cyan-400/70 pointer-events-none" />
-                      <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-cyan-400/70 pointer-events-none" />
-                      <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-cyan-400/70 pointer-events-none" />
-                      <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-cyan-400/70 pointer-events-none" />
+                      <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-blue-400 pointer-events-none" />
+                      <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-blue-400 pointer-events-none" />
+                      <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-blue-400 pointer-events-none" />
+                      <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-blue-400 pointer-events-none" />
 
                       {/* Centered face detection oval template */}
-                      {webcamOn && (
-                        <div className="absolute w-28 h-36 border border-cyan-400/30 rounded-[50%] pointer-events-none shadow-[0_0_15px_rgba(34,211,238,0.05)]" />
-                      )}
+                      <div className="absolute w-[120px] h-[144px] border-2 border-blue-500/35 rounded-[50%] pointer-events-none shadow-[0_0_15px_rgba(59,130,246,0.05)]" />
 
                       {/* Recording badge */}
-                      <div className="absolute top-3 left-3 bg-red-950/60 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold font-mono tracking-wider flex items-center gap-1.5 shadow-md">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      <div className="absolute top-4 left-5 bg-red-950/35 text-red-300 border border-red-500/45 px-3 py-2 rounded-md text-sm font-mono tracking-wider flex items-center gap-2 shadow-md">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
                         <span>REC</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 px-1">
-                      <span className="flex items-center gap-1.5"><Square className="w-3.5 h-3.5 text-slate-500" /> Validated</span>
-                      <span className="text-emerald-500 font-bold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Live
+                    <div className="h-[58px] px-7 flex items-center justify-between text-base font-mono text-[#6B7896]">
+                      <span className="flex items-center gap-3"><Square className="w-3.5 h-3.5 text-emerald-300" /> Validated</span>
+                      <span className="text-[#5B6280] flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Live
                       </span>
                     </div>
                   </div>
@@ -1352,45 +1350,45 @@ export default function InterviewRoom() {
                 if (q.type !== 'coding') {
                   // Standard Speech/MCQ environment overhual
                   return (
-                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 items-start">
+                    <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-6 px-6 py-[26px] items-start">
                       
-                      {/* Left Column (8 of 12 columns) */}
-                      <div className="lg:col-span-8 flex flex-col gap-6 w-full">
+                      {/* Left Column */}
+                      <div className="lg:col-span-7 flex flex-col gap-5 w-full">
                         
                         {/* Metrics Bar */}
-                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 relative overflow-hidden shadow-lg grid grid-cols-2">
+                        <div className="h-[88px] bg-[#10141C] border-2 border-[#202638] rounded-[22px] relative overflow-hidden shadow-lg grid grid-cols-[20%_80%]">
                           {/* Segment 1: Question indicator */}
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Question</span>
-                            <span className="text-3xl font-black text-blue-400 mt-1 font-mono">
+                          <div className="flex flex-col justify-center px-8">
+                            <span className="text-base font-mono text-[#667293] uppercase tracking-[0.24em] leading-none">Question</span>
+                            <span className="text-[28px] font-black text-blue-400 mt-1 font-mono leading-none">
                               {currentQ + 1} <span className="text-slate-700 text-lg">/</span> {questions.length}
                             </span>
                           </div>
 
                           {/* Middle border separator */}
-                          <div className="absolute left-1/2 top-4 bottom-4 w-[1px] bg-slate-800/60" />
+                          <div className="absolute left-[20%] top-0 bottom-0 w-[2px] bg-[#202638]" />
 
                           {/* Segment 2: Time limit per question */}
-                          <div className="flex flex-col pl-6">
-                            <div className="flex items-center gap-2">
-                              <Square className="w-4 h-4 text-slate-500" />
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Time Per Question</span>
+                          <div className="flex flex-col justify-center pl-9">
+                            <div className="flex items-center gap-6">
+                              <Square className="w-3.5 h-3.5 text-blue-300/80" />
+                              <span className="text-base font-mono text-[#667293] uppercase tracking-[0.24em] leading-none">Time Per Question</span>
                             </div>
-                            <span className="text-3xl font-black text-amber-500 mt-1 font-mono">
+                            <span className="text-[28px] font-black text-amber-500 mt-2 font-mono leading-none pl-10">
                               {timeLeft % 60}
                             </span>
                           </div>
                         </div>
 
                         {/* Question display card */}
-                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-8 relative overflow-hidden shadow-lg">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-4 block">Question Display</span>
-                          <h3 className="text-2xl md:text-3xl font-extrabold text-white leading-snug tracking-tight mb-6 whitespace-pre-line">
+                        <div className="min-h-[424px] bg-[#10141C] border-2 border-[#202638] rounded-[24px] px-[50px] py-[48px] relative overflow-hidden shadow-lg">
+                          <span className="text-base text-[#667293] uppercase tracking-[0.28em] font-mono mb-7 block">Question Display</span>
+                          <h3 className="text-[40px] font-extrabold text-white leading-tight tracking-tight mb-8 whitespace-pre-line">
                             {q.text}
                           </h3>
 
-                          <div className="flex flex-wrap gap-2">
-                            <span className={`text-[10px] px-3 py-1 rounded-lg font-bold font-mono tracking-wider uppercase border ${
+                          <div className="flex flex-wrap gap-4">
+                            <span className={`text-sm px-5 py-2 rounded-lg font-bold font-mono tracking-wide uppercase border-2 ${
                               q.difficulty === 'hard' 
                                 ? 'text-red-400 border-red-500/20 bg-red-950/20' 
                                 : q.difficulty === 'medium' 
@@ -1399,7 +1397,7 @@ export default function InterviewRoom() {
                             }`}>
                               {q.difficulty}
                             </span>
-                            <span className="text-[10px] px-3 py-1 rounded-lg font-bold font-mono tracking-wider uppercase text-blue-400 border border-blue-500/20 bg-blue-950/20">
+                            <span className="text-sm px-5 py-2 rounded-lg font-bold font-mono tracking-wide uppercase text-blue-300 border-2 border-blue-600/60 bg-blue-950/20">
                               AI Interviewer
                             </span>
                             {q.type !== 'mcq' && (
@@ -1545,7 +1543,7 @@ export default function InterviewRoom() {
                         )}
 
                         {/* Action buttons */}
-                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 flex justify-between items-center gap-4 shadow-lg">
+                        <div className="min-h-[127px] bg-[#10141C] border-2 border-[#202638] rounded-[24px] px-8 py-7 flex items-center gap-5 shadow-lg">
                           <button
                             onClick={() => {
                               if (isListening) {
@@ -1554,10 +1552,10 @@ export default function InterviewRoom() {
                                 startSpeechRecognition();
                               }
                             }}
-                            className={`flex items-center justify-center gap-3 px-6 py-4 border rounded-xl font-bold text-sm transition-all duration-200 cursor-pointer flex-1 ${
+                            className={`h-[68px] max-w-[280px] flex items-center justify-center gap-5 px-8 border-2 rounded-[14px] font-extrabold text-[28px] transition-all duration-200 cursor-pointer flex-1 ${
                               isListening 
                                 ? 'border-red-500/30 bg-red-950/20 text-red-400 hover:bg-red-950/40' 
-                                : 'border-slate-800 bg-transparent text-white hover:bg-slate-800/40 hover:border-slate-700'
+                                : 'border-white/35 bg-transparent text-white hover:bg-slate-800/40 hover:border-slate-500'
                             }`}
                           >
                             <Square className={`w-4 h-4 ${isListening ? 'text-red-400 fill-red-400' : 'text-slate-500'}`} />
@@ -1566,7 +1564,7 @@ export default function InterviewRoom() {
 
                           <button
                             onClick={handleNextQuestion}
-                            className="flex items-center justify-center gap-3 px-6 py-4 border border-slate-800 bg-transparent text-white font-bold text-sm rounded-xl hover:bg-slate-800/40 hover:border-slate-700 transition-all duration-200 cursor-pointer flex-1"
+                            className="h-[68px] max-w-[296px] flex items-center justify-center gap-5 px-8 border-2 border-white/35 bg-transparent text-white font-extrabold text-[28px] rounded-[14px] hover:bg-slate-800/40 hover:border-slate-500 transition-all duration-200 cursor-pointer flex-1"
                           >
                             <span>{currentQ < questions.length - 1 ? 'Next Question' : 'Complete Assessment'}</span>
                             <Square className="w-4 h-4 text-slate-500" />
@@ -1574,29 +1572,29 @@ export default function InterviewRoom() {
                         </div>
                       </div>
 
-                      {/* Right Column (4 of 12 columns) */}
-                      <div className="lg:col-span-4 flex flex-col gap-6 w-full">
+                      {/* Right Column */}
+                      <div className="lg:col-span-5 flex flex-col gap-5 w-full">
                         {renderCandidateCameraCard()}
 
                         {/* Network Speed Widget */}
-                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex items-center justify-between relative overflow-hidden">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-center text-slate-400">
-                              <Square className="w-5 h-5 text-slate-500" />
+                        <div className="h-[102px] bg-[#10141C] border-2 border-[#202638] rounded-[18px] px-8 shadow-lg flex items-center justify-between relative overflow-hidden">
+                          <div className="flex items-center gap-5">
+                            <div className="w-5 h-5 flex items-center justify-center text-blue-400">
+                              <Square className="w-5 h-5" />
                             </div>
                             <div>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono block">Network Speed</span>
-                              <span className="text-base font-bold text-emerald-400 mt-0.5 block leading-none">Good</span>
+                              <span className="text-sm text-[#667293] uppercase tracking-[0.28em] font-mono block">Network Speed</span>
+                              <span className="text-xl font-extrabold text-emerald-400 mt-1 block leading-none">Good</span>
                             </div>
                           </div>
 
                           {/* Graphical signal strength bars */}
-                          <div className="flex items-end gap-1.5 h-7">
-                            <div className="w-1.5 h-2 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
-                            <div className="w-1.5 h-3 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
-                            <div className="w-1.5 h-4 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
-                            <div className="w-1.5 h-5 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
-                            <div className="w-1.5 h-6 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
+                          <div className="flex items-end gap-2 h-10">
+                            <div className="w-2 h-3 bg-blue-500 rounded-full" />
+                            <div className="w-2 h-5 bg-blue-500 rounded-full" />
+                            <div className="w-2 h-7 bg-blue-500 rounded-full" />
+                            <div className="w-2 h-9 bg-blue-500 rounded-full" />
+                            <div className="w-2 h-10 bg-slate-700/60 rounded-full" />
                           </div>
                         </div>
                       </div>
