@@ -62,28 +62,58 @@ export const questionsController = {
       }
 
       // Parse the extracted text into actual questions
-      const lines = extractedText.split(/\r?\n/);
-      let parsedTexts = lines.filter(line => {
-        const trimmed = line.trim();
-        if (!trimmed) return false;
-        // Check if it ends with a question mark
-        if (trimmed.endsWith('?')) return true;
-        // Check if it starts with a question word or bullet
-        if (/^(\d+\.|\*|-|•|·)?\s*(What|How|Explain|Describe|Why|Who|Where|When|List|Discuss)/i.test(trimmed)) return true;
-        return false;
-      }).map(q => q.trim().replace(/^(\d+\.|\*|-|•|·)\s*/, ''));
+      const rawLines = extractedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      let parsedTexts = [];
+      let currentQ = "";
+      
+      for (const line of rawLines) {
+        // A new question typically starts with a number followed by a dot or parenthesis, e.g., "1.", "1)", "Q1."
+        if (/^(Q?\d+[\.\)]|Question\s*\d+[:\.])/i.test(line)) {
+          if (currentQ) parsedTexts.push(currentQ);
+          currentQ = line.replace(/^(Q?\d+[\.\)]|Question\s*\d+[:\.])\s*/i, '');
+        } else {
+          currentQ = currentQ ? currentQ + "\n" + line : line;
+        }
+      }
+      if (currentQ) parsedTexts.push(currentQ);
+
+      // If heuristic failed to find numbered questions, fallback to question marks/keywords
+      if (parsedTexts.length <= 1) {
+        parsedTexts = rawLines.filter(line => line.endsWith('?') || /^(\*|-|•|·)?\s*(What|How|Explain|Describe|Why|Who|Where|When|List|Discuss)/i.test(line));
+      }
 
       if (parsedTexts.length === 0) {
         parsedTexts = ["Voice Question: Please explain the core concepts from the uploaded document."];
       }
 
-      const simulatedQuestions = parsedTexts.map(text => {
-         const isCoding = /(code|write|implement|algorithm|function|program|snippet)/i.test(text);
+      const simulatedQuestions = parsedTexts.map(textBlock => {
+         const isCoding = /(code|write|implement|algorithm|function|program|snippet)/i.test(textBlock);
+         
+         // Try to extract MCQ options if formatted like A) B) C) D) or A. B. C. D.
+         // We split by a newline followed by A. or A) (case insensitive)
+         const optMatch = textBlock.split(/\n?(?=[A-E][\.\)]\s+)/i);
+         let text = textBlock;
+         let options = null;
+         
+         if (optMatch.length > 2) {
+           text = optMatch[0].trim();
+           options = {};
+           for (let i = 1; i < optMatch.length; i++) {
+             const optText = optMatch[i].trim();
+             const letter = optText.charAt(0).toLowerCase();
+             // Support a, b, c, d
+             if (['a','b','c','d','e'].includes(letter)) {
+               options[letter] = optText.substring(2).trim();
+             }
+           }
+         }
+
          return {
-            text: text,
-            type: isCoding ? 'coding' : 'text',
+            text: text.substring(0, 500), // Protect against very long chunks
+            type: options ? 'mcq' : (isCoding ? 'coding' : 'text'),
             difficulty: 'medium',
-            skillTags: isCoding ? ['Coding'] : ['Voice'],
+            options: options,
+            skillTags: isCoding ? ['Coding'] : ['General'],
             createdBy: req.user.id
          };
       });

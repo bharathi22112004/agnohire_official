@@ -358,26 +358,78 @@ export const interviewsController = {
       const { id } = req.params;
       const { answers } = req.body; // [{ questionId, answerText, timeTaken }]
 
-      // Save answers
-      await prisma.candidateAnswer.createMany({
-        data: answers.map((a) => ({
-          interviewId: id,
-          questionId: a.questionId,
-          answerText: a.answerText,
-          timeTaken: a.timeTaken,
-          score: computeScore(a),
-        })),
+      // Fetch the interview to get candidate details and fallback domain questions
+      const interviewRecord = await prisma.interview.findUnique({
+        where: { id },
+        include: { candidate: { include: { domain: true } } },
+      });
+      const domainName = interviewRecord?.candidate?.domain?.name || 'General';
+      const fallbackQuestions = getEnterpriseFallbackQuestions(domainName);
+
+      // Fetch database questions matching submitted answers
+      const questionIds = answers.map((a) => a.questionId);
+      const dbQuestions = await prisma.question.findMany({
+        where: { id: { in: questionIds } },
       });
 
-      // Calculate AI score
+      // Build quick lookup map for all possible questions
+      const questionsMap = {};
+      fallbackQuestions.forEach((fq) => {
+        questionsMap[fq.id] = fq;
+      });
+      dbQuestions.forEach((dbQ) => {
+        questionsMap[dbQ.id] = dbQ;
+      });
+
+      // Grade each answer asynchronously
+      const gradedAnswers = await Promise.all(
+        answers.map(async (ans) => {
+          const matchedQuestion = questionsMap[ans.questionId];
+          let score = 0;
+
+          if (matchedQuestion) {
+            const hasCorrectAnswer = matchedQuestion.correctAnswer && matchedQuestion.correctAnswer.trim() !== '';
+
+            if (hasCorrectAnswer) {
+              // Exact database matches (e.g. MCQ checks)
+              const cleanCandidate = (ans.answerText || '').trim().toLowerCase();
+              const cleanCorrect = matchedQuestion.correctAnswer.trim().toLowerCase();
+              score = cleanCandidate === cleanCorrect ? 10 : 0;
+              console.log(`[Grading] MCQ matching for question ${ans.questionId}: Got "${cleanCandidate}", Expected "${cleanCorrect}". Assigned score: ${score}/10`);
+            } else {
+              // Technical transcript or coding response - invoke AI evaluation
+              score = await evaluateAnswerWithAi(matchedQuestion.text, ans.answerText || '', matchedQuestion.type);
+              console.log(`[Grading] AI Evaluator completed for question ${ans.questionId}. Assigned score: ${score}/10`);
+            }
+          } else {
+            // Unmapped question fallback
+            score = computeBasicScore(ans.answerText || '');
+          }
+
+          return {
+            interviewId: id,
+            questionId: ans.questionId,
+            answerText: ans.answerText,
+            timeTaken: ans.timeTaken,
+            score: score,
+          };
+        })
+      );
+
+      // Save graded answers in database
+      await prisma.candidateAnswer.createMany({
+        data: gradedAnswers,
+      });
+
+      // Calculate overall candidate AI assessment score
       const aiEnabled = await configService.isAiScoringEnabled();
       let aiScore = 0;
       if (aiEnabled) {
-        const totalScore = answers.reduce((acc, a) => acc + (computeScore(a) || 0), 0);
-        aiScore = answers.length ? totalScore / answers.length : 0;
+        const totalScore = gradedAnswers.reduce((acc, a) => acc + (a.score || 0), 0);
+        aiScore = gradedAnswers.length ? totalScore / gradedAnswers.length : 0;
       }
 
-      // Update interview + create result
+      // Update interview status and save result record
       const interview = await interviewRepository.update(id, {
         status: 'completed',
         completedAt: new Date(),
@@ -388,7 +440,7 @@ export const interviewsController = {
         aiScore,
       });
 
-      // Notify recruiter
+      // Notify recruiter real-time via Socket.IO
       const iv = await interviewRepository.findById(id);
       socketService.emitInterviewCompleted(iv.recruiterId, {
         interviewId: id,
@@ -399,7 +451,7 @@ export const interviewsController = {
       await socketService.notify(iv.recruiterId, {
         type: 'interview_completed',
         title: 'Interview Completed',
-        message: `${iv.candidate.name} has completed their interview. AI Score: ${aiScore.toFixed(1)}`,
+        message: `${iv.candidate.name} has completed their interview. AI Score: ${aiScore.toFixed(1)}/10`,
       });
 
       return success(res, { aiScore });
@@ -427,13 +479,15 @@ export const interviewsController = {
         data: { status: decision === 'pass' ? 'passed' : decision === 'fail' ? 'failed' : 'held' },
       });
 
-      // Send result email to candidate
+      // Send result email to candidate - DISABLED in favor of manual HR bulk-dispatch from templates
+      /*
       await emailService.sendResultEmail({
         candidate: interview.candidate,
         decision,
         feedback,
         recruiter: req.user,
       });
+      */
 
       // Notify HR, Admin, Superadmin
       const hrAdmins = await prisma.user.findMany({
@@ -548,15 +602,161 @@ export const interviewsController = {
   },
 };
 
-function computeScore(answer) {
-  // Simple keyword-based scoring (production: use AI API)
-  if (!answer.answerText) return 0;
-  const wordCount = answer.answerText.split(/\s+/).length;
+async function evaluateAnswerWithAi(questionText, answerText, questionType) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.log('[Grading] GEMINI_API_KEY is not configured. Falling back to local semantic grading.');
+    return performLocalSemanticGrading(questionText, answerText, questionType);
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    
+    const prompt = `
+You are an expert AI technical interviewer and evaluator. Your task is to evaluate a candidate's answer for the following question.
+
+Question Category/Type: ${questionType}
+Question:
+"${questionText}"
+
+Candidate's Answer (Speech Transcript or Code submission):
+"${answerText}"
+
+Grade the candidate's answer on a scale from 0 to 10 (inclusive) based on correctness, completeness, and relevance.
+- Provide a score from 0 to 10 (as an integer).
+- Provide a brief constructive reason/explanation for the score.
+
+You MUST respond strictly in the following JSON format:
+{
+  "score": <number_from_0_to_10>,
+  "reason": "<explanation_text>"
+}
+    `;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: prompt
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API returned status ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!responseText) {
+      throw new Error('Empty response from Gemini API');
+    }
+
+    const parsed = JSON.parse(responseText.trim());
+    const score = parseInt(parsed.score);
+    if (isNaN(score)) {
+      throw new Error('Parsed score is not a number');
+    }
+    
+    return Math.max(0, Math.min(10, score));
+  } catch (err) {
+    console.error('[Grading] AI evaluation failed:', err.message, 'Falling back to local semantic grading.');
+    return performLocalSemanticGrading(questionText, answerText, questionType);
+  }
+}
+
+function performLocalSemanticGrading(questionText, answerText, questionType) {
+  if (!answerText || answerText.trim() === '') return 0;
+
+  const cleanAns = answerText.toLowerCase().trim();
+  const cleanQuest = questionText.toLowerCase().trim();
+  const words = cleanAns.split(/\s+/).filter(Boolean);
+
+  if (words.length < 3) return 1;
+
+  let score = 3;
+
+  if (questionType === 'coding') {
+    const codeKeywords = ['function', 'def', 'return', 'const', 'let', 'var', 'for', 'while', 'if', 'else', 'class', 'import', 'include', 'std', 'vector', 'string'];
+    let matches = 0;
+    codeKeywords.forEach(kw => {
+      if (cleanAns.includes(kw)) matches++;
+    });
+
+    if (matches > 4) score += 4;
+    else if (matches > 2) score += 2;
+
+    if (cleanQuest.includes('reverse') && (cleanAns.includes('split') || cleanAns.includes('reverse') || cleanAns.includes('join') || cleanAns.includes('[::-1]'))) {
+      score += 3;
+    }
+    if (cleanQuest.includes('two sum') && (cleanAns.includes('map') || cleanAns.includes('index') || cleanAns.includes('target') || cleanAns.includes('sum') || cleanAns.includes('hash'))) {
+      score += 3;
+    }
+    if (cleanQuest.includes('median') && (cleanAns.includes('sort') || cleanAns.includes('length') || cleanAns.includes('math.floor') || cleanAns.includes('len('))) {
+      score += 3;
+    }
+    if (cleanQuest.includes('fizzbuzz') && (cleanAns.includes('% 3') || cleanAns.includes('% 5') || cleanAns.includes('fizz') || cleanAns.includes('buzz'))) {
+      score += 3;
+    }
+  } else {
+    if (words.length > 50) score += 3;
+    else if (words.length > 20) score += 2;
+    else if (words.length > 8) score += 1;
+
+    if (cleanQuest.includes('virtual dom') || cleanQuest.includes('reconciliation')) {
+      const keywords = ['diff', 'virtual', 'reconciliation', 'render', 'update', 'batch', 'performance', 'real dom', 'ui', 'components'];
+      keywords.forEach(kw => {
+        if (cleanAns.includes(kw)) score += 0.7;
+      });
+    }
+
+    if (cleanQuest.includes('regularization') || cleanQuest.includes('l1') || cleanQuest.includes('l2')) {
+      const keywords = ['overfitting', 'lasso', 'ridge', 'sparsity', 'absolute', 'squared', 'penalty', 'weights', 'l1', 'l2'];
+      keywords.forEach(kw => {
+        if (cleanAns.includes(kw)) score += 0.7;
+      });
+    }
+
+    if (cleanQuest.includes('event loop') || cleanQuest.includes('asynchronous')) {
+      const keywords = ['call stack', 'callback', 'queue', 'non-blocking', 'single-thread', 'io', 'libuv', 'microtask', 'macrotask', 'promise'];
+      keywords.forEach(kw => {
+        if (cleanAns.includes(kw)) score += 0.7;
+      });
+    }
+
+    if (cleanQuest.includes('index') || cleanQuest.includes('database')) {
+      const keywords = ['b-tree', 'lookup', 'speed', 'query', 'scan', 'performance', 'primary key', 'pointer', 'search'];
+      keywords.forEach(kw => {
+        if (cleanAns.includes(kw)) score += 0.7;
+      });
+    }
+  }
+
+  return Math.max(0, Math.min(10, Math.round(score)));
+}
+
+function computeBasicScore(answerText) {
+  if (!answerText) return 0;
+  const wordCount = answerText.split(/\s+/).length;
   if (wordCount > 50) return 8;
   if (wordCount > 20) return 6;
   if (wordCount > 5) return 4;
   return 2;
 }
+
 
 function getEnterpriseFallbackQuestions(domainName) {
   const isFrontend = /react|frontend|javascript|js|ui|web/i.test(domainName);

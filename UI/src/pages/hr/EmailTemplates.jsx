@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { Mail, Edit, Check, RefreshCw, Sparkles, Send } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Modal } from '../../components/ui/Modal';
+import { StatusBadge } from '../../components/ui/Badge';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
@@ -18,6 +20,84 @@ export default function EmailTemplates() {
   const [bodyHtml, setBodyHtml] = useState('');
 
   const [testing, setTesting] = useState(false);
+
+  // States for manual bulk dispatch modal
+  const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
+  const [dispatchCandidates, setDispatchCandidates] = useState([]);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
+  const [fetchingCandidates, setFetchingCandidates] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
+  const [candidateSearch, setCandidateSearch] = useState('');
+
+  const templateStatusMap = {
+    'Interview Invitation': 'assigned',
+    'Interview Passed': 'passed',
+    'Interview Failed': 'failed',
+    'Interview On Hold': 'held'
+  };
+
+  async function handleOpenDispatch() {
+    const status = templateStatusMap[selectedTemplate.name];
+    if (!status) {
+      toast.error(`Dispatch is not supported for ${selectedTemplate.name} template.`);
+      return;
+    }
+    
+    setIsDispatchModalOpen(true);
+    setFetchingCandidates(true);
+    setSelectedCandidateIds([]);
+    setCandidateSearch('');
+    
+    try {
+      const res = await api.get(`/candidates?status=${status}&limit=1000`);
+      setDispatchCandidates(res.data.data.candidates || []);
+    } catch {
+      toast.error('Failed to fetch eligible candidates.');
+    } finally {
+      setFetchingCandidates(false);
+    }
+  }
+
+  async function handleBulkEmailDispatch() {
+    if (selectedCandidateIds.length === 0) {
+      toast.error('Please select at least one candidate.');
+      return;
+    }
+    
+    setDispatching(true);
+    try {
+      const res = await api.post('/candidates/bulk-email', {
+        templateId: selectedTemplate.id,
+        candidateIds: selectedCandidateIds
+      });
+      toast.success(res.data.data.message || 'Successfully dispatched bulk emails.');
+      setIsDispatchModalOpen(false);
+    } catch (err) {
+      toast.error(err.response?.data?.error?.message || 'Failed to dispatch bulk emails.');
+    } finally {
+      setDispatching(false);
+    }
+  }
+
+  function handleSelectCandidate(id) {
+    if (selectedCandidateIds.includes(id)) {
+      setSelectedCandidateIds(selectedCandidateIds.filter(cid => cid !== id));
+    } else {
+      setSelectedCandidateIds([...selectedCandidateIds, id]);
+    }
+  }
+
+  function handleSelectAll(filtered) {
+    const allFilteredIds = filtered.map(c => c.id);
+    const areAllSelected = allFilteredIds.every(id => selectedCandidateIds.includes(id));
+    
+    if (areAllSelected) {
+      setSelectedCandidateIds(selectedCandidateIds.filter(id => !allFilteredIds.includes(id)));
+    } else {
+      const newSelection = Array.from(new Set([...selectedCandidateIds, ...allFilteredIds]));
+      setSelectedCandidateIds(newSelection);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -120,6 +200,11 @@ export default function EmailTemplates() {
     { token: '{{sectorName}}', desc: 'Assigned industrial sector' }
   ];
 
+  const filteredCandidates = dispatchCandidates.filter(c =>
+    (c.name || '').toLowerCase().includes(candidateSearch.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(candidateSearch.toLowerCase())
+  );
+
   return (
     <div>
       <div className="page-header">
@@ -215,9 +300,16 @@ export default function EmailTemplates() {
               <Button variant="secondary" leftIcon={<Send size={14} />} onClick={handleSendTest} loading={testing}>
                 Send Test Email
               </Button>
-              <Button onClick={handleSave} loading={saving} leftIcon={<Check size={14} />}>
-                Save Template Changes
-              </Button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {templateStatusMap[selectedTemplate.name] && (
+                  <Button variant="outline" onClick={handleOpenDispatch} leftIcon={<Mail size={14} />}>
+                    Dispatch to Candidates
+                  </Button>
+                )}
+                <Button onClick={handleSave} loading={saving} leftIcon={<Check size={14} />}>
+                  Save Template Changes
+                </Button>
+              </div>
             </div>
           </motion.div>
         ) : (
@@ -226,6 +318,125 @@ export default function EmailTemplates() {
           </div>
         )}
       </div>
+
+      {/* Bulk Dispatch Modal */}
+      <Modal
+        isOpen={isDispatchModalOpen}
+        onClose={() => setIsDispatchModalOpen(false)}
+        title={`Dispatch Bulk Email: ${selectedTemplate?.name}`}
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setIsDispatchModalOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleBulkEmailDispatch}
+              loading={dispatching}
+              disabled={selectedCandidateIds.length === 0}
+              leftIcon={<Send size={14} />}
+            >
+              Send to {selectedCandidateIds.length} Candidate{selectedCandidateIds.length !== 1 ? 's' : ''}
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, margin: 0 }}>
+            Select the validated candidates you want to send this template email to.
+          </p>
+
+          <Input
+            placeholder="Search candidates by name or email..."
+            value={candidateSearch}
+            onChange={e => setCandidateSearch(e.target.value)}
+          />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'var(--bg-card-header)',
+              border: '1px solid var(--border-color)',
+              fontSize: 12,
+              fontWeight: 700,
+              color: 'var(--text-muted)'
+            }}>
+              <div style={{ width: 40, display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={filteredCandidates.length > 0 && filteredCandidates.every(c => selectedCandidateIds.includes(c.id))}
+                  ref={el => {
+                    if (el) {
+                      el.indeterminate = filteredCandidates.length > 0 && 
+                        filteredCandidates.some(c => selectedCandidateIds.includes(c.id)) && 
+                        !filteredCandidates.every(c => selectedCandidateIds.includes(c.id));
+                    }
+                  }}
+                  onChange={() => handleSelectAll(filteredCandidates)}
+                  style={{ cursor: 'pointer' }}
+                />
+              </div>
+              <div style={{ flex: 2 }}>Candidate Details</div>
+              <div style={{ flex: 1.5 }}>Sector / Department</div>
+              <div style={{ flex: 1.2 }}>Current Status</div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
+              {fetchingCandidates ? (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
+                  <RefreshCw className="animate-spin" size={20} style={{ margin: '0 auto 8px', color: 'var(--color-brand)' }} />
+                  Fetching eligible candidates...
+                </div>
+              ) : filteredCandidates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: 13 }}>
+                  No candidates found with status <strong>{templateStatusMap[selectedTemplate?.name]}</strong>.
+                </div>
+              ) : (
+                filteredCandidates.map(c => {
+                  const isSelected = selectedCandidateIds.includes(c.id);
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => handleSelectCandidate(c.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        background: isSelected ? 'rgba(99, 102, 241, 0.04)' : 'var(--bg-surface)',
+                        border: isSelected ? '1px solid var(--color-brand)' : '1px solid var(--border-color)',
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      <div style={{ width: 40, display: 'flex', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleSelectCandidate(c.id)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </div>
+                      <div style={{ flex: 2 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.email}</div>
+                      </div>
+                      <div style={{ flex: 1.5, color: 'var(--text-secondary)', fontSize: 12 }}>
+                        {c.sector?.name || 'N/A'}
+                      </div>
+                      <div style={{ flex: 1.2 }}>
+                        <StatusBadge status={c.status} />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

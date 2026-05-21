@@ -8,13 +8,11 @@ import {
   Cpu, BarChart3,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useConfigStore } from '../../store/configStore';
 import { Avatar } from '../ui/Avatar';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { useEffect } from 'react';
 
 const navConfig = {
   superadmin: [

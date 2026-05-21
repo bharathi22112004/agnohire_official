@@ -25,6 +25,9 @@ router.post('/assign', rbac('hr', 'admin', 'superadmin'), auditMiddleware('ASSIG
 // Bulk schedule
 router.post('/bulk-schedule', rbac('hr', 'admin', 'superadmin'), auditMiddleware('SCHEDULE_INTERVIEW_BULK', 'candidates'), candidatesController.bulkSchedule);
 
+// Bulk send template emails
+router.post('/bulk-email', rbac('hr', 'admin', 'superadmin'), auditMiddleware('BULK_EMAIL_CANDIDATES', 'candidates'), candidatesController.bulkTemplateEmail);
+
 // Resume upload
 router.post('/:id/resume', rbac('hr', 'admin', 'superadmin', 'recruiter'), uploadMiddleware.single('resume'), candidatesController.uploadResume);
 

@@ -298,6 +298,82 @@ export const candidatesController = {
     }
   },
 
+  async bulkTemplateEmail(req, res) {
+    try {
+      const { templateId, candidateIds } = req.body;
+      if (!templateId || !candidateIds || !Array.isArray(candidateIds) || candidateIds.length === 0) {
+        return error(res, 'Template ID and a valid array of candidate IDs are required', 400, 'BAD_REQUEST');
+      }
+
+      const template = await prisma.emailTemplate.findUnique({ where: { id: templateId } });
+      if (!template) {
+        return error(res, 'Email template not found', 404, 'NOT_FOUND');
+      }
+
+      const candidates = await prisma.candidate.findMany({
+        where: { id: { in: candidateIds } },
+        include: {
+          sector: true,
+          interviews: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: { recruiter: true, schedule: true }
+          }
+        }
+      });
+
+      let sentCount = 0;
+      let failCount = 0;
+
+      for (const candidate of candidates) {
+        const interview = candidate.interviews[0];
+        const recruiter = interview?.recruiter;
+
+        let finalHtml = template.bodyHtml;
+        let finalSubject = template.subject;
+
+        // Replacements
+        const replacements = {
+          '{{candidateName}}': candidate.name || 'Candidate',
+          '{{link}}': interview?.schedule?.linkToken ? `${process.env.CLIENT_URL || 'http://localhost:5173'}/interview?token=${interview.schedule.linkToken}` : '#',
+          '{{platformName}}': 'AgnoHire',
+          '{{recruiterName}}': recruiter?.name || 'Recruitment Team',
+          '{{sectorName}}': candidate.sector?.name || 'our organization'
+        };
+
+        for (const [key, val] of Object.entries(replacements)) {
+          finalHtml = finalHtml.split(key).join(val);
+          finalSubject = finalSubject.split(key).join(val);
+        }
+
+        const customSmtp = await emailService.getSmtpConfig(candidate.sectorId || req.user.sectorId);
+
+        try {
+          await emailService.sendEmail({
+            to: candidate.email,
+            subject: finalSubject,
+            html: finalHtml,
+            templateId: template.id,
+            candidateId: candidate.id,
+            customSmtp
+          });
+          sentCount++;
+        } catch (e) {
+          console.error(`Bulk template email failed for ${candidate.email}:`, e);
+          failCount++;
+        }
+      }
+
+      return success(res, {
+        message: `Successfully dispatched emails to ${sentCount} candidates. ${failCount > 0 ? `Failed for ${failCount}.` : ''}`,
+        sentCount,
+        failCount
+      });
+    } catch (err) {
+      return error(res, err.message);
+    }
+  },
+
   async uploadResume(req, res) {
     try {
       if (!req.file) return error(res, 'Resume file required', 400, 'NO_FILE');

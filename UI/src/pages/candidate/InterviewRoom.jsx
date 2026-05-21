@@ -5,7 +5,9 @@ import {
   Mic, MicOff, Video, VideoOff, ChevronRight, Clock,
   AlertTriangle, CheckCircle, Cpu, Eye, EyeOff, Shield,
   Smartphone, Wifi, Monitor, Battery, Volume2, Camera,
-  RefreshCw, Lock, AlertCircle, Play, FileCode, Award, Code, Check, X
+  RefreshCw, Lock, AlertCircle, Play, FileCode, Award, Code, Check, X,
+  Bell, HelpCircle, FileText, QrCode, CircleUserRound, SlidersHorizontal, ClipboardList,
+  Square
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -45,10 +47,49 @@ export default function InterviewRoom() {
   const [tabWarnings, setTabWarnings] = useState(0);
   const [error, setError] = useState('');
 
+  // Voice recognition & TTS states
+  const [isListening, setIsListening] = useState(false);
+  const [speechError, setSpeechError] = useState('');
+  const [micVolume, setMicVolume] = useState(0);
+  const recognitionRef = useRef(null);
+  const shouldListenRef = useRef(false);
+  const accumulatedTextRef = useRef('');
+  const latestTranscriptRef = useRef('');
+  const lastQRef = useRef(null);
+
+  const [isTtsSpeaking, setIsTtsSpeaking] = useState(false);
+
+  const questionsRef = useRef([]);
+  const currentQRef = useRef(0);
+  const activeQIdRef = useRef(null);
+  const answersRef = useRef({});
+  const utteranceRef = useRef(null);
+  const isListeningRef = useRef(false);
+
+  // Sync state to refs on every render
+  useEffect(() => {
+    questionsRef.current = questions;
+    currentQRef.current = currentQ;
+    if (questions[currentQ]) {
+      activeQIdRef.current = questions[currentQ].id;
+    } else {
+      activeQIdRef.current = null;
+    }
+  }, [questions, currentQ]);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
   // Mobile Device check, collapsible proctor, and draft scratchpad states
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [isProctorCollapsed, setIsProctorCollapsed] = useState(false);
   const [scratchpadText, setScratchpadText] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
 
   useEffect(() => {
     const checkDevice = () => {
@@ -129,6 +170,81 @@ export default function InterviewRoom() {
     return () => clearInterval(timerRef.current);
   }, [phase]);
 
+  // Re-attach active stream or auto-mount hardware stream inside interview phase
+  useEffect(() => {
+    if (phase === PHASE.INTERVIEW) {
+      if (streamRef.current) {
+        if (videoRef.current && videoRef.current.srcObject !== streamRef.current) {
+          videoRef.current.srcObject = streamRef.current;
+        }
+      } else {
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          .then((stream) => {
+            streamRef.current = stream;
+            setWebcamOn(true);
+            setMicOn(true);
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream;
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to auto-mount hardware streams:', err);
+          });
+      }
+    }
+  }, [phase, webcamOn]);
+
+  // Real-time microphone volume analysis for visualization
+  useEffect(() => {
+    if (!micOn || !streamRef.current || phase !== PHASE.INTERVIEW) {
+      setMicVolume(0);
+      return;
+    }
+
+    let audioContext = null;
+    let source = null;
+    let analyser = null;
+    let animationFrameId = null;
+
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AudioContextClass();
+      
+      source = audioContext.createMediaStreamSource(streamRef.current);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 64;
+      
+      source.connect(analyser);
+      
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      const updateVolume = () => {
+        if (!analyser) return;
+        analyser.getByteFrequencyData(dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / bufferLength;
+        setMicVolume(Math.min(100, average * 1.5));
+        
+        animationFrameId = requestAnimationFrame(updateVolume);
+      };
+      
+      updateVolume();
+    } catch (err) {
+      console.warn('Failed to initialize real-time audio monitor:', err);
+    }
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (source) source.disconnect();
+      if (audioContext && audioContext.state !== 'closed') audioContext.close().catch(() => {});
+    };
+  }, [phase, micOn]);
+
   // Anti-cheat visibility monitor
   useEffect(() => {
     if (phase !== PHASE.INTERVIEW) return;
@@ -175,6 +291,228 @@ export default function InterviewRoom() {
       document.removeEventListener('contextmenu', blockContextMenu);
     };
   }, [phase, tabWarnings, schedule]);
+
+  // Voice control helpers and Web Speech effects
+  const startSpeechRecognition = () => {
+    const activeQ = questionsRef.current[currentQRef.current];
+    if (!activeQ || activeQ.type === 'coding') {
+      stopSpeechRecognition();
+      return;
+    }
+
+    const activeQId = activeQ.id;
+
+    if (isListeningRef.current || recognitionRef.current) {
+      console.log('[Speech] Recognition already active or starting. Guarded.');
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSpeechError('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    shouldListenRef.current = true;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      if (activeQIdRef.current !== activeQId) {
+        try { recognition.stop(); } catch (e) {}
+        return;
+      }
+      setIsListening(true);
+      setSpeechError('');
+    };
+
+    recognition.onerror = (e) => {
+      if (activeQIdRef.current !== activeQId) return;
+      console.error('[SpeechRecognition Error]', e);
+      if (e.error === 'not-allowed') {
+        setSpeechError('Microphone access blocked. Enable microphone permissions.');
+        shouldListenRef.current = false;
+      } else if (e.error === 'no-speech') {
+        // Keep listening, do not abort
+      } else if (e.error === 'aborted') {
+        // Aborted systematically or manually
+      } else {
+        setSpeechError(`Voice input paused (${e.error}).`);
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      if (activeQIdRef.current !== activeQId) {
+        setIsListening(false);
+        return;
+      }
+
+      setIsListening(false);
+      
+      // Save what we have transcribed so far from this session
+      accumulatedTextRef.current = latestTranscriptRef.current;
+
+      // Auto-restart if we are still supposed to be listening!
+      if (shouldListenRef.current) {
+        setTimeout(() => {
+          if (shouldListenRef.current && activeQIdRef.current === activeQId) {
+            startSpeechRecognition();
+          }
+        }, 100);
+      }
+    };
+
+    recognition.onresult = (event) => {
+      if (activeQIdRef.current !== activeQId) {
+        try { recognition.stop(); } catch (e) {}
+        return;
+      }
+
+      let segments = [];
+      for (let i = 0; i < event.results.length; ++i) {
+        segments.push(event.results[i][0].transcript.trim());
+      }
+      const currentSessionTranscript = segments.filter(Boolean).join(' ');
+      
+      const previousText = accumulatedTextRef.current || '';
+      const fullText = previousText 
+        ? `${previousText.trim()} ${currentSessionTranscript.trim()}`
+        : currentSessionTranscript.trim();
+
+      latestTranscriptRef.current = fullText;
+
+      setAnswers((prev) => ({
+        ...prev,
+        [activeQId]: fullText,
+      }));
+
+      // MCQ auto-selection by voice
+      if (activeQ.type === 'mcq' && activeQ.options) {
+        const cleanedText = fullText.toLowerCase();
+        Object.keys(activeQ.options).forEach((key) => {
+          if (
+            cleanedText === key ||
+            cleanedText.includes(`option ${key}`) ||
+            cleanedText.includes(`select ${key}`) ||
+            cleanedText.includes(`choose ${key}`)
+          ) {
+            setAnswers((prev) => ({
+              ...prev,
+              [activeQId]: key,
+            }));
+            toast.success(`Selected Option ${key.toUpperCase()} via Voice!`, { id: 'voice-select' });
+          }
+        });
+      }
+    };
+
+    recognitionRef.current = recognition;
+
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error('Failed to start speech recognition:', e);
+    }
+  };
+
+  const stopSpeechRecognition = () => {
+    shouldListenRef.current = false;
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  };
+
+
+  // Text-To-Speech (TTS) speaking active question
+  useEffect(() => {
+    if (phase === PHASE.INTERVIEW && questions[currentQ]) {
+      const activeQ = questions[currentQ];
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        setIsTtsSpeaking(false);
+        
+        // Clean text for cleaner speaking
+        let cleanText = activeQ.text;
+        if (activeQ.type === 'mcq' && activeQ.options) {
+          const optionsText = Object.entries(activeQ.options)
+            .map(([k, v]) => `Option ${k.toUpperCase()}: ${v}`)
+            .join('. ');
+          cleanText = `${activeQ.text}. ${optionsText}`;
+        }
+        
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utteranceRef.current = utterance;
+        
+        utterance.onstart = () => {
+          setIsTtsSpeaking(true);
+        };
+
+        utterance.onend = () => {
+          setIsTtsSpeaking(false);
+          // TTS finished speaking! Now start listening.
+          if (activeQ.type !== 'coding') {
+            startSpeechRecognition();
+          }
+        };
+
+        utterance.onerror = (e) => {
+          setIsTtsSpeaking(false);
+          console.warn('TTS utterance error/cancelled:', e);
+          // If cancelled or failed, still start listening as a fallback!
+          if (activeQ.type !== 'coding' && shouldListenRef.current) {
+            startSpeechRecognition();
+          }
+        };
+
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+
+        window.speechSynthesis.speak(utterance);
+      } else {
+        // Fallback if speechSynthesis is not supported
+        if (activeQ.type !== 'coding') {
+          startSpeechRecognition();
+        }
+      }
+    }
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setIsTtsSpeaking(false);
+    };
+  }, [currentQ, phase]);
+
+  // Clean up SpeechRecognition on phase transitions
+  useEffect(() => {
+    return () => {
+      stopSpeechRecognition();
+    };
+  }, [phase]);
+
+  // Sync transcription history refs when active question index changes
+  useEffect(() => {
+    if (questions[currentQ]) {
+      if (lastQRef.current !== currentQ) {
+        const existingAnswer = answers[questions[currentQ].id] || '';
+        accumulatedTextRef.current = existingAnswer;
+        latestTranscriptRef.current = existingAnswer;
+        lastQRef.current = currentQ;
+        setShowManualInput(false);
+      }
+    }
+  }, [currentQ, questions]);
 
   // Fetch initial details
   async function loadInterviewDetails() {
@@ -525,6 +863,7 @@ export default function InterviewRoom() {
             </div>
             <p className="text-xs text-slate-400 text-center">Your proctor report has been generated. You may safely close this window.</p>
           </div>
+
         </motion.div>
       </div>
     );
@@ -536,476 +875,342 @@ export default function InterviewRoom() {
     const setupSteps = [
       { phaseKey: PHASE.VERIFY,       num: '01', title: 'Identity Verification', desc: 'Email OTP authentication' },
       { phaseKey: PHASE.ENV_CHECK,    num: '02', title: 'System Compatibility',  desc: 'Hardware & network check' },
-      { phaseKey: PHASE.FACE_REG,     num: '03', title: 'Biometric Enrollment',  desc: 'Facial profile capture' },
+      { phaseKey: PHASE.FACE_REG,     num: '03', title: 'Biometric Enrollment',  desc: 'Facial profile capture'  },
       { phaseKey: PHASE.INSTRUCTIONS, num: '04', title: 'Exam Briefing',          desc: 'Rules & acknowledgement' },
     ];
     const stepPhaseOrder = [PHASE.VERIFY, PHASE.ENV_CHECK, PHASE.FACE_REG, PHASE.INSTRUCTIONS];
     const currentStepIdx = stepPhaseOrder.indexOf(phase);
 
     return (
-      <div className="min-h-screen flex font-sans overflow-hidden">
+      <div style={{ fontFamily: "'Inter', system-ui, sans-serif" }} className="h-screen w-screen flex overflow-hidden">
 
-        {/* ══════════════════════════════════════════════════════════════════
-            LEFT SIDEBAR — Dark enterprise panel
-        ══════════════════════════════════════════════════════════════════ */}
-        <aside className="w-[270px] shrink-0 bg-[#080D17] flex flex-col min-h-screen relative overflow-hidden select-none">
-          {/* Ambient glow orbs */}
-          <div className="absolute -top-24 -left-24 w-56 h-56 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 right-0 w-48 h-48 bg-indigo-600/8 rounded-full blur-3xl pointer-events-none" />
-
-          {/* ── Logo ────────────────────────────────────────────────────── */}
-          <div className="relative z-10 px-6 py-5 border-b border-white/[0.05] flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/40 flex-shrink-0">
-              <Cpu className="w-4 h-4 text-white" />
+        {/* LEFT SIDEBAR */}
+        <aside className="w-[220px] shrink-0 flex flex-col h-screen select-none" style={{ background: '#0F172A', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ padding: '28px 22px 20px' }} className="flex items-center gap-3">
+            <div style={{ width: 40, height: 40, background: '#3B82F6', borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(59,130,246,0.35)' }}>
+              <QrCode style={{ width: 20, height: 20, color: '#fff' }} />
             </div>
             <div>
-              <p className="text-[14px] font-bold text-white tracking-tight leading-none">AgnoHire</p>
-              <p className="text-[9px] text-blue-400/50 font-semibold uppercase tracking-widest mt-0.5">Interview Platform</p>
+              <p style={{ fontSize: 16, fontWeight: 700, color: '#F1F5F9', letterSpacing: '-0.3px', lineHeight: 1 }}>AgnoHire</p>
+              <p style={{ fontSize: 9, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.18em', marginTop: 5 }}>Interview Platform</p>
             </div>
           </div>
 
-          {/* ── Steps ───────────────────────────────────────────────────── */}
-          <nav className="relative z-10 flex-1 px-4 pt-7 pb-4">
-            <p className="text-[9px] uppercase font-bold text-slate-600 tracking-widest mb-4 px-2">Setup Checklist</p>
-            <div className="relative">
-              {/* Connecting vertical rail */}
-              <div className="absolute left-[22px] top-5 bottom-5 w-px bg-white/[0.05]" />
-              <div className="space-y-0.5">
-                {setupSteps.map((step, idx) => {
-                  const isActive    = phase === step.phaseKey;
-                  const isCompleted = currentStepIdx > idx;
-                  return (
-                    <div
-                      key={step.phaseKey}
-                      className={`relative flex items-center gap-3.5 px-3 py-3 rounded-xl transition-all duration-200 ${
-                        isActive ? 'bg-blue-600/10 border border-blue-500/20' : 'border border-transparent'
-                      }`}
-                    >
-                      {/* Step indicator */}
-                      <div className={`relative z-10 w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-bold font-mono flex-shrink-0 transition-all duration-200 ${
-                        isCompleted ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
-                        : isActive  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/35'
-                        :             'bg-white/[0.04] text-slate-600 border border-white/[0.06]'
-                      }`}>
-                        {isCompleted ? <Check className="w-3.5 h-3.5" /> : step.num}
-                      </div>
-                      {/* Text */}
-                      <div className="min-w-0">
-                        <p className={`text-[13px] font-semibold leading-none mb-0.5 transition-colors ${
-                          isActive ? 'text-white' : isCompleted ? 'text-slate-400' : 'text-slate-600'
-                        }`}>{step.title}</p>
-                        <p className={`text-[11px] transition-colors ${
-                          isActive ? 'text-blue-400' : isCompleted ? 'text-emerald-500/60' : 'text-slate-700'
-                        }`}>{step.desc}</p>
-                      </div>
-                      {/* Active pulse dot */}
-                      {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />}
+          <nav style={{ flex: 1, padding: '4px 10px', overflowY: 'auto' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 10, paddingLeft: 8 }}>Setup Checklist</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {setupSteps.map((step, idx) => {
+                const isActive    = phase === step.phaseKey;
+                const isCompleted = currentStepIdx > idx;
+                const StepIcon = idx === 0 ? Shield : idx === 1 ? SlidersHorizontal : idx === 2 ? Eye : ClipboardList;
+                return (
+                  <div key={step.phaseKey} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 10px', borderRadius: 10, background: isActive ? 'rgba(59,130,246,0.12)' : 'transparent', border: isActive ? '1px solid rgba(59,130,246,0.22)' : '1px solid transparent' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, fontFamily: 'monospace', background: isCompleted ? '#10B981' : isActive ? 'rgba(148,163,184,0.2)' : 'transparent', border: isCompleted ? 'none' : isActive ? 'none' : '1.5px solid rgba(255,255,255,0.16)', color: isCompleted ? '#fff' : isActive ? '#CBD5E1' : '#475569' }}>
+                      {isCompleted ? <Check style={{ width: 13, height: 13 }} /> : step.num}
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: isActive ? '#F1F5F9' : isCompleted ? '#94A3B8' : '#475569', lineHeight: 1.3, marginBottom: 2 }}>{step.title}</p>
+                      <p style={{ fontSize: 10, color: isActive ? '#60A5FA' : isCompleted ? 'rgba(52,211,153,0.5)' : '#334155' }}>{step.desc}</p>
+                    </div>
+                    <StepIcon style={{ width: 15, height: 15, flexShrink: 0, color: isActive ? '#60A5FA' : '#1E293B' }} />
+                  </div>
+                );
+              })}
             </div>
           </nav>
 
-          {/* ── Footer ──────────────────────────────────────────────────── */}
-          <div className="relative z-10 px-4 pb-5 pt-4 border-t border-white/[0.05] space-y-2.5">
-            {/* Candidate card */}
-            <div className="flex items-center gap-3 px-3 py-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
-              <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/25 flex items-center justify-center text-[12px] font-bold text-blue-400 flex-shrink-0">
-                {schedule?.interview?.candidate?.name?.charAt(0)?.toUpperCase() || 'C'}
+          <div style={{ padding: '14px 18px 18px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.16)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CircleUserRound style={{ width: 20, height: 20, color: '#94A3B8' }} />
               </div>
-              <div className="min-w-0">
-                <p className="text-[12px] font-semibold text-slate-200 truncate leading-none mb-0.5">
-                  {schedule?.interview?.candidate?.name || '—'}
-                </p>
-                <p className="text-[10px] text-slate-600 truncate">
-                  {schedule?.interview?.candidate?.email || '—'}
-                </p>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#F1F5F9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1 }}>{schedule?.interview?.candidate?.name || '—'}</p>
+                <p style={{ fontSize: 10, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 4 }}>{schedule?.interview?.candidate?.email || '—'}</p>
               </div>
             </div>
-
-            {/* Traceability */}
-            <div className="px-3 py-3 bg-white/[0.02] border border-white/[0.05] rounded-xl space-y-2">
-              <p className="text-[9px] uppercase font-bold text-slate-600 tracking-widest">Link Traceability</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {[
-                { label: 'Recruiter ID',   value: recruiterId ? `${recruiterId.slice(0, 8)}…` : 'N/A', color: 'text-blue-400' },
-                { label: 'Session Token',  value: token       ? `${token.slice(0, 8)}…`        : 'N/A', color: 'text-emerald-400' },
+                { label: 'Recruiter ID',  value: recruiterId ? `${recruiterId.slice(0, 10)}...` : 'N/A' },
+                { label: 'Session Token', value: token       ? `${token.slice(0, 10)}...`        : 'N/A' },
               ].map(item => (
-                <div key={item.label} className="flex items-center justify-between">
-                  <span className="text-[10px] text-slate-600">{item.label}</span>
-                  <span className={`font-mono text-[10px] ${item.color}`}>{item.value}</span>
+                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#334155' }}>{item.label}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#60A5FA' }}>{item.value}</span>
                 </div>
               ))}
-            </div>
-
-            {/* Security note */}
-            <div className="flex items-start gap-2 px-1">
-              <Shield className="w-3 h-3 text-slate-600 mt-0.5 flex-shrink-0" />
-              <p className="text-[10px] text-slate-700 leading-relaxed">AI-proctored · TLS encrypted · Device isolated</p>
             </div>
           </div>
         </aside>
 
-        {/* ══════════════════════════════════════════════════════════════════
-            RIGHT PANEL — Content workspace
-        ══════════════════════════════════════════════════════════════════ */}
-        <div className="flex-1 flex flex-col min-h-screen bg-[#F4F6FA]">
+        {/* RIGHT PANEL */}
+        <div className="flex-1 flex flex-col h-screen overflow-hidden" style={{ background: '#0D1117' }}>
 
-          {/* ── Top Bar ─────────────────────────────────────────────────── */}
-          <header className="h-[60px] px-8 flex items-center justify-between bg-white border-b border-slate-200 flex-shrink-0">
+          <header style={{ height: 56, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
             <div>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider leading-none mb-0.5">
-                {setupSteps[currentStepIdx]?.desc}
-              </p>
-              <p className="text-[13px] font-bold text-slate-800 leading-none">{setupSteps[currentStepIdx]?.title}</p>
+              <p style={{ fontSize: 10, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.18em', lineHeight: 1, marginBottom: 5 }}>{setupSteps[currentStepIdx]?.desc}</p>
+              <p style={{ fontSize: 17, fontWeight: 700, color: '#F1F5F9', lineHeight: 1 }}>{setupSteps[currentStepIdx]?.title}</p>
             </div>
-            <div className="flex items-center gap-5">
-              {/* Segmented progress */}
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 5 }}>
                   {setupSteps.map((_, idx) => (
-                    <div key={idx} className={`h-1 rounded-full transition-all duration-300 ${
-                      idx < currentStepIdx  ? 'w-5 bg-emerald-500'
-                      : idx === currentStepIdx ? 'w-7 bg-blue-600'
-                      : 'w-4 bg-slate-200'
-                    }`} />
+                    <div key={idx} style={{ height: 3, width: idx === currentStepIdx ? 28 : 20, borderRadius: 99, background: idx < currentStepIdx ? '#10B981' : idx === currentStepIdx ? '#3B82F6' : 'rgba(255,255,255,0.1)', transition: 'all 0.3s' }} />
                   ))}
                 </div>
-                <span className="text-[11px] font-medium text-slate-400">{currentStepIdx + 1} / 4</span>
+                <span style={{ fontSize: 12, color: '#64748B', fontWeight: 500 }}>{currentStepIdx + 1} / 4</span>
               </div>
-              {/* Candidate pill */}
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full">
-                <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0">
-                  {schedule?.interview?.candidate?.name?.charAt(0) || 'C'}
-                </div>
-                <span className="text-[12px] font-medium text-slate-700 max-w-[130px] truncate">
-                  {schedule?.interview?.candidate?.name || 'Candidate'}
-                </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(255,255,255,0.09)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748B' }}><Bell style={{ width: 16, height: 16 }} /></button>
+                <button style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(255,255,255,0.09)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748B' }}><HelpCircle style={{ width: 16, height: 16 }} /></button>
               </div>
             </div>
           </header>
 
-          {/* ── Scrollable content ──────────────────────────────────────── */}
-          <main className="flex-1 flex items-center justify-center py-10 px-8 overflow-y-auto">
-            <div className="w-full max-w-[640px]">
+          <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '24px' }}>
+            <div style={{ width: '100%', maxWidth: 560 }}>
               <AnimatePresence mode="wait">
 
-                {/* ╔══════════════════════════════════════════════════════╗
-                    ║  PHASE 1 — IDENTITY VERIFICATION                    ║
-                    ╚══════════════════════════════════════════════════════╝ */}
                 {phase === PHASE.VERIFY && (
-                  <motion.div key="verify" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.18 }}>
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm shadow-slate-200/80 overflow-hidden">
-                      {/* Card header */}
-                      <div className="px-7 pt-7 pb-5 border-b border-slate-100">
-                        <div className="flex items-center gap-4 mb-5">
-                          <div className="w-10 h-10 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <Shield className="w-5 h-5 text-blue-600" />
+                  <motion.div key="verify" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+                      <div style={{ padding: '26px 26px 18px' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
+                          <div style={{ width: 48, height: 48, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Shield style={{ width: 24, height: 24, color: '#93C5FD' }} />
                           </div>
                           <div>
-                            <h2 className="text-[17px] font-bold text-slate-900 tracking-tight leading-none mb-1">Identity Verification</h2>
-                            <p className="text-[13px] text-slate-500">Confirm your profile and request your one-time passcode</p>
+                            <h2 style={{ fontSize: 21, fontWeight: 700, color: '#F1F5F9', lineHeight: 1.2, marginBottom: 6 }}>Identity Verification</h2>
+                            <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>Confirm your profile and request your one-time passcode to begin the interview process.</p>
                           </div>
                         </div>
-                        {/* Position badge */}
-                        <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                          <span className="text-[12px] text-slate-600">
-                            <span className="font-medium">Applied for:</span>{' '}
-                            <span className="font-bold text-slate-800">{schedule?.interview?.candidate?.domain?.name || 'Software Engineer'}</span>
-                            <span className="text-slate-400 mx-1">·</span>
-                            <span>Recruiter: {schedule?.interview?.recruiter?.name || 'Technical Recruiter'}</span>
-                          </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#3B82F6', flexShrink: 0 }} />
+                          <span style={{ fontSize: 13, color: '#94A3B8' }}>Applied for: <strong style={{ color: '#60A5FA' }}>{schedule?.interview?.candidate?.domain?.name || 'Software Engineer'}</strong></span>
+                          <span style={{ color: 'rgba(255,255,255,0.14)', fontSize: 16 }}>|</span>
+                          <span style={{ fontSize: 13, color: '#64748B' }}>Recruiter: {schedule?.interview?.recruiter?.name || 'Frontend Team'}</span>
                         </div>
                       </div>
-
-                      {/* Card body */}
-                      <div className="px-7 py-6">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Registered Profile</p>
-                        <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 mb-6">
+                      <div style={{ padding: '0 26px 26px' }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 10 }}>Registered Profile Data</p>
+                        <div style={{ background: '#0A1520', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
                           {[
-                            { label: 'Full Name',     value: schedule?.interview?.candidate?.name },
-                            { label: 'Email Address', value: schedule?.interview?.candidate?.email },
-                            { label: 'Candidate ID',  value: schedule?.interview?.candidateId },
-                          ].map(field => (
-                            <div key={field.label} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-slate-50 transition-colors">
-                              <span className="text-[12px] font-medium text-slate-500">{field.label}</span>
-                              <span className="text-[12px] font-semibold text-slate-800 font-mono">{field.value || '—'}</span>
+                            { label: 'Full Name',     value: schedule?.interview?.candidate?.name, mono: false },
+                            { label: 'Email Address', value: schedule?.interview?.candidate?.email, mono: false },
+                            { label: 'Candidate ID',  value: schedule?.interview?.candidateId,      mono: true  },
+                          ].map((field, i, arr) => (
+                            <div key={field.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 18px', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{field.label}</span>
+                              <span style={{ fontSize: field.mono ? 11 : 13, fontWeight: 600, color: '#E2E8F0', fontFamily: field.mono ? 'monospace' : 'inherit' }}>{field.value || '—'}</span>
                             </div>
                           ))}
                         </div>
-
                         {!otpSent ? (
-                          <button
-                            onClick={handleSendOtp}
-                            className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold rounded-xl shadow-lg shadow-blue-600/20 hover:shadow-blue-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                          >
-                            Send Verification Code <ChevronRight className="w-4 h-4" />
+                          <button onClick={handleSendOtp} style={{ width: '100%', height: 50, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 6px 20px rgba(59,130,246,0.3)' }}>
+                            Send Verification Code <ChevronRight style={{ width: 18, height: 18 }} />
                           </button>
                         ) : (
-                          <div className="space-y-3">
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                             <div>
-                              <label className="block text-[12px] font-bold text-slate-700 mb-2">6-Digit Verification Code</label>
-                              <input
-                                type="text" maxLength={6} placeholder="– – – – – –"
-                                value={otpCode} onChange={(e) => setOtpCode(e.target.value)}
-                                className="w-full text-center tracking-[12px] text-xl font-bold font-mono border-2 border-slate-200 focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-600/10 rounded-xl py-3.5 transition-all"
-                              />
+                              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 8 }}>6-Digit Verification Code</label>
+                              <input type="text" maxLength={6} placeholder="• • • • • •" value={otpCode} onChange={e => setOtpCode(e.target.value)} style={{ width: '100%', textAlign: 'center', letterSpacing: '14px', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', background: '#0A1520', border: '2px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '14px 0', color: '#F1F5F9', outline: 'none', boxSizing: 'border-box' }} />
                             </div>
                             {devOtp && (
-                              <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 border border-amber-100 rounded-xl text-[12px]">
-                                <span className="text-amber-700 font-medium">🧪 Dev Mode OTP</span>
-                                <span className="font-mono font-bold text-amber-800 tracking-widest">{devOtp}</span>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10 }}>
+                                <span style={{ fontSize: 12, color: '#FCD34D' }}>🧪 Dev Mode OTP</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#FDE68A', letterSpacing: '4px' }}>{devOtp}</span>
                               </div>
                             )}
-                            <button
-                              onClick={handleVerifyOtp} disabled={otpVerifying}
-                              className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-[13px] font-semibold rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                            >
-                              {otpVerifying ? 'Verifying…' : 'Verify & Continue'} {!otpVerifying && <ChevronRight className="w-4 h-4" />}
+                            <button onClick={handleVerifyOtp} disabled={otpVerifying} style={{ width: '100%', height: 50, background: '#059669', border: 'none', borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: otpVerifying ? 0.6 : 1 }}>
+                              {otpVerifying ? 'Verifying…' : 'Verify & Continue'} {!otpVerifying && <ChevronRight style={{ width: 16, height: 16 }} />}
                             </button>
                           </div>
                         )}
-                      </div>
-
-                      {/* Card footer */}
-                      <div className="px-7 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center gap-2">
-                        <Lock className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                        <span className="text-[11px] text-slate-400">Session secured with 256-bit TLS encryption and real-time biometric proctoring.</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+                          <Lock style={{ width: 12, height: 12, color: '#334155', flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, color: '#334155' }}>Session secured with 256-bit TLS encryption and real-time biometric proctoring.</span>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
                 )}
 
-                {/* ╔══════════════════════════════════════════════════════╗
-                    ║  PHASE 2 — SYSTEM COMPATIBILITY CHECK               ║
-                    ╚══════════════════════════════════════════════════════╝ */}
                 {phase === PHASE.ENV_CHECK && (
-                  <motion.div key="env" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.18 }} className="space-y-3">
-                    {/* Header */}
-                    <div className="bg-white border border-slate-200 rounded-2xl px-7 py-5 shadow-sm flex items-center gap-4">
-                      <div className="w-10 h-10 bg-violet-50 border border-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Monitor className="w-5 h-5 text-violet-600" />
+                  <motion.div key="env" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-3">
+                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '22px 26px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 48, height: 48, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Monitor style={{ width: 24, height: 24, color: '#A78BFA' }} />
                       </div>
                       <div>
-                        <h2 className="text-[17px] font-bold text-slate-900 tracking-tight leading-none mb-1">System Compatibility</h2>
-                        <p className="text-[13px] text-slate-500">Complete all checks before proceeding to biometric enrollment</p>
+                        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>System Compatibility</h2>
+                        <p style={{ fontSize: 13, color: '#64748B' }}>Complete all checks before proceeding to biometric enrollment</p>
                       </div>
                     </div>
-
-                    {/* Two-column grid */}
                     <div className="grid grid-cols-2 gap-3">
-                      {/* Webcam column */}
-                      <div className="bg-[#080D17] border border-white/[0.07] rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: 300 }}>
-                        <div className="px-4 py-3 border-b border-white/[0.05] flex items-center gap-2 flex-shrink-0">
-                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${webcamOn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-700'}`} />
-                          <span className="text-[11px] text-slate-400 font-medium">{webcamOn ? 'Camera Active' : 'Camera Inactive'}</span>
+                      <div style={{ background: '#080D17', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 260 }}>
+                        <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: webcamOn ? '#34D399' : '#334155' }} />
+                          <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{webcamOn ? 'Camera Active' : 'Camera Inactive'}</span>
                         </div>
-                        <div className="flex-1 relative min-h-[180px]">
-                          {webcamOn ? (
-                            <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
-                          ) : (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-5">
-                              <div className="w-12 h-12 bg-white/[0.04] border border-white/[0.07] rounded-2xl flex items-center justify-center">
-                                <Camera className="w-6 h-6 text-slate-600" />
+                        <div style={{ flex: 1, position: 'relative', minHeight: 130 }}>
+                          {webcamOn
+                            ? <video ref={videoRef} autoPlay muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+                            : <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                                <Camera style={{ width: 26, height: 26, color: '#334155' }} />
+                                <p style={{ fontSize: 11, color: '#334155', textAlign: 'center', padding: '0 16px' }}>Allow camera and microphone access</p>
                               </div>
-                              <p className="text-[11px] text-slate-600 text-center leading-relaxed">Allow browser camera &amp; microphone access</p>
-                            </div>
-                          )}
+                          }
                         </div>
-                        <div className="px-4 py-3 border-t border-white/[0.05] flex-shrink-0">
-                          <button onClick={startWebcam} className="w-full h-8 bg-white/[0.07] hover:bg-white/[0.12] text-white text-[11px] font-semibold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer">
-                            <Camera className="w-3.5 h-3.5 text-blue-400" />
+                        <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                          <button onClick={startWebcam} style={{ width: '100%', height: 32, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 8, color: '#94A3B8', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            <Camera style={{ width: 13, height: 13, color: '#60A5FA' }} />
                             {webcamOn ? 'Restart Camera' : 'Enable Camera & Mic'}
                           </button>
                         </div>
                       </div>
-
-                      {/* Checks column */}
-                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Requirements</p>
-                        <div className="space-y-1 flex-1">
+                      <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column' }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Requirements</p>
+                        <div style={{ flex: 1 }}>
                           {[
-                            { icon: Monitor, label: 'Fullscreen',     ok: envStates.fullscreen,           badge: envStates.fullscreen ? 'Locked' : null,                           action: !envStates.fullscreen ? <button onClick={requestFullscreenMode} className="text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg cursor-pointer transition-colors">Enable</button> : null },
-                            { icon: Volume2, label: 'Speaker',        ok: envStates.speaker,              badge: envStates.speaker ? 'Pass' : null,                               action: !envStates.speaker ? <button onClick={playTestSound} disabled={isSpeakerPlaying} className="text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-2.5 py-1 rounded-lg cursor-pointer transition-colors">{isSpeakerPlaying ? '…' : 'Test'}</button> : null },
-                            { icon: Wifi,    label: 'Network',        ok: envStates.internet === 'success', badge: envStates.internet === 'success' ? `${speedTestMbps} Mbps` : null, action: envStates.internet !== 'success' ? <button onClick={runSpeedTest} className="text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg cursor-pointer transition-colors">{envStates.internet === 'running' ? '…' : 'Test'}</button> : null },
-                            { icon: Battery, label: 'Battery',        ok: envStates.battery > 20,         badge: `${envStates.battery}%`,                                         action: null },
-                            { icon: Camera,  label: 'Camera & Mic',   ok: envStates.camera && envStates.mic, badge: envStates.camera && envStates.mic ? 'Pass' : null,            action: null },
+                            { icon: Monitor, label: 'Fullscreen',   ok: envStates.fullscreen,             action: !envStates.fullscreen ? <button onClick={requestFullscreenMode} style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#3B82F6', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Enable</button> : null },
+                            { icon: Volume2, label: 'Speaker',      ok: envStates.speaker,                action: !envStates.speaker ? <button onClick={playTestSound} disabled={isSpeakerPlaying} style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#3B82F6', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', opacity: isSpeakerPlaying ? 0.5 : 1 }}>{isSpeakerPlaying ? '…' : 'Test'}</button> : null },
+                            { icon: Wifi,    label: 'Network',      ok: envStates.internet === 'success', action: envStates.internet !== 'success' ? <button onClick={runSpeedTest} style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#3B82F6', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>{envStates.internet === 'running' ? '…' : 'Test'}</button> : null },
+                            { icon: Battery, label: 'Battery',      ok: envStates.battery > 20,           badge: `${envStates.battery}%`, action: null },
+                            { icon: Camera,  label: 'Camera & Mic', ok: envStates.camera && envStates.mic, action: null },
                           ].map((check, idx) => (
-                            <div key={idx} className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
-                              <div className="flex items-center gap-2.5">
-                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 border ${check.ok ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-200'}`}>
-                                  <check.icon className={`w-3.5 h-3.5 ${check.ok ? 'text-emerald-500' : 'text-slate-400'}`} />
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: idx < 4 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 26, height: 26, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: check.ok ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)', border: check.ok ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.06)' }}>
+                                  <check.icon style={{ width: 12, height: 12, color: check.ok ? '#34D399' : '#475569' }} />
                                 </div>
-                                <span className="text-[12px] font-medium text-slate-700">{check.label}</span>
+                                <span style={{ fontSize: 12, color: '#94A3B8' }}>{check.label}</span>
                               </div>
-                              <div>
-                                {check.ok && check.badge ? (
-                                  <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md">{check.badge}</span>
-                                ) : check.action ? check.action : (
-                                  <span className="text-[11px] text-slate-300">—</span>
-                                )}
-                              </div>
+                              {check.ok
+                                ? <span style={{ fontSize: 11, fontWeight: 600, color: '#34D399', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 5, padding: '2px 7px' }}>{check.badge || 'Pass'}</span>
+                                : check.action ? check.action : <span style={{ fontSize: 11, color: '#334155' }}>—</span>}
                             </div>
                           ))}
                         </div>
-                        <button
-                          disabled={!(envStates.fullscreen && envStates.camera && envStates.mic && envStates.speaker && envStates.internet === 'success')}
-                          onClick={() => setPhase(PHASE.FACE_REG)}
-                          className="mt-4 w-full h-9 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-400 text-white text-[12px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-600/20 disabled:shadow-none"
-                        >
-                          Continue <ChevronRight className="w-3.5 h-3.5" />
+                        <button disabled={!(envStates.fullscreen && envStates.camera && envStates.mic && envStates.speaker && envStates.internet === 'success')} onClick={() => setPhase(PHASE.FACE_REG)}
+                          style={{ marginTop: 12, width: '100%', height: 38, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: (envStates.fullscreen && envStates.camera && envStates.mic && envStates.speaker && envStates.internet === 'success') ? 1 : 0.3 }}>
+                          Continue <ChevronRight style={{ width: 14, height: 14 }} />
                         </button>
                       </div>
                     </div>
                   </motion.div>
                 )}
 
-                {/* ╔══════════════════════════════════════════════════════╗
-                    ║  PHASE 3 — BIOMETRIC FACE ENROLLMENT                ║
-                    ╚══════════════════════════════════════════════════════╝ */}
                 {phase === PHASE.FACE_REG && (
-                  <motion.div key="face" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.18 }}>
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm shadow-slate-200/80 overflow-hidden">
-                      <div className="px-7 pt-7 pb-5 border-b border-slate-100 flex items-center gap-4">
-                        <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                          <Eye className="w-5 h-5 text-emerald-600" />
+                  <motion.div key="face" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+                      <div style={{ padding: '22px 26px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ width: 48, height: 48, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Eye style={{ width: 24, height: 24, color: '#34D399' }} />
                         </div>
                         <div>
-                          <h2 className="text-[17px] font-bold text-slate-900 tracking-tight leading-none mb-1">Biometric Enrollment</h2>
-                          <p className="text-[13px] text-slate-500">Position your face in the frame and capture your profile</p>
+                          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>Biometric Enrollment</h2>
+                          <p style={{ fontSize: 13, color: '#64748B' }}>Position your face in the frame and capture your profile</p>
                         </div>
                       </div>
-                      <div className="px-7 py-6">
-                        {/* Camera frame */}
-                        <div className="bg-[#080D17] rounded-2xl overflow-hidden relative mb-5" style={{ aspectRatio: '4/3' }}>
+                      <div style={{ padding: '22px 26px' }}>
+                        <div style={{ background: '#080D17', borderRadius: 14, overflow: 'hidden', position: 'relative', aspectRatio: '16/9', marginBottom: 16 }}>
                           {faceDataUrl
-                            ? <img src={faceDataUrl} alt="Captured" className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
-                            : <video ref={videoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover scale-x-[-1]" />
-                          }
-                          {faceScanning && (
-                            <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent top-1/2 animate-bounce shadow-lg shadow-blue-500/50" />
-                          )}
+                            ? <img src={faceDataUrl} alt="Captured" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+                            : <video ref={videoRef} autoPlay muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />}
                           {!faceRegistered && !faceScanning && (
-                            <div className="absolute inset-8 border-2 border-blue-400/25 border-dashed rounded-2xl flex items-end justify-center pb-4">
-                              <span className="text-[10px] text-blue-400 bg-black/60 px-3 py-1.5 rounded-full font-bold uppercase tracking-wider">Center Your Face</span>
+                            <div style={{ position: 'absolute', inset: 24, border: '1.5px dashed rgba(59,130,246,0.3)', borderRadius: 12, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 12 }}>
+                              <span style={{ fontSize: 10, color: '#60A5FA', background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: 20, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Center Your Face</span>
                             </div>
                           )}
                           {faceRegistered && (
-                            <div className="absolute inset-0 bg-emerald-500/10 border-2 border-emerald-400/40 rounded-2xl flex items-center justify-center">
-                              <div className="flex items-center gap-2 bg-black/50 backdrop-blur-sm px-5 py-2.5 rounded-xl border border-emerald-400/30">
-                                <CheckCircle className="w-4 h-4 text-emerald-400" />
-                                <span className="text-[13px] font-bold text-emerald-300">Face Enrolled</span>
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(16,185,129,0.08)', border: '2px solid rgba(52,211,153,0.3)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,0.5)', padding: '9px 16px', borderRadius: 10, backdropFilter: 'blur(8px)' }}>
+                                <CheckCircle style={{ width: 16, height: 16, color: '#34D399' }} />
+                                <span style={{ fontSize: 13, fontWeight: 700, color: '#6EE7B7' }}>Face Enrolled</span>
                               </div>
                             </div>
                           )}
                         </div>
-
                         {!faceRegistered ? (
                           <button onClick={captureFaceBiometrics} disabled={faceScanning}
-                            className="w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-[13px] font-semibold rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                          >
-                            <Camera className="w-4 h-4" />
+                            style={{ width: '100%', height: 50, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: faceScanning ? 0.6 : 1 }}>
+                            <Camera style={{ width: 18, height: 18 }} />
                             {faceScanning ? 'Capturing…' : 'Capture Facial Profile'}
                           </button>
                         ) : (
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-3 px-4 py-3.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-                              <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', borderRadius: 10 }}>
+                              <CheckCircle style={{ width: 18, height: 18, color: '#34D399', flexShrink: 0 }} />
                               <div>
-                                <p className="text-[13px] font-bold text-emerald-800">Enrollment Successful</p>
-                                <p className="text-[11px] text-emerald-600">Biometric reference frames saved securely</p>
+                                <p style={{ fontSize: 13, fontWeight: 700, color: '#6EE7B7' }}>Enrollment Successful</p>
+                                <p style={{ fontSize: 11, color: 'rgba(52,211,153,0.6)' }}>Biometric reference frames saved securely</p>
                               </div>
                             </div>
-                            <div className="flex gap-2">
-                              <button onClick={() => { setFaceRegistered(false); setFaceDataUrl(''); startWebcam(); }}
-                                className="flex-1 h-10 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[12px] font-semibold rounded-xl transition-all cursor-pointer border border-slate-200">
-                                Retake
-                              </button>
-                              <button onClick={() => setPhase(PHASE.INSTRUCTIONS)}
-                                className="flex-[2] h-10 bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-semibold rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer">
-                                Proceed to Briefing <ChevronRight className="w-3.5 h-3.5" />
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button onClick={() => { setFaceRegistered(false); setFaceDataUrl(''); startWebcam(); }} style={{ flex: 1, height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: '#94A3B8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Retake</button>
+                              <button onClick={() => setPhase(PHASE.INSTRUCTIONS)} style={{ flex: 2, height: 40, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                Proceed to Briefing <ChevronRight style={{ width: 13, height: 13 }} />
                               </button>
                             </div>
                           </div>
                         )}
-                      </div>
-                      <div className="px-7 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center gap-2">
-                        <Lock className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                        <span className="text-[11px] text-slate-400">Facial data is encrypted and stored only for this session.</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+                          <Lock style={{ width: 12, height: 12, color: '#334155', flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, color: '#334155' }}>Facial data is encrypted and stored only for this session.</span>
+                        </div>
                       </div>
                     </div>
                   </motion.div>
                 )}
 
-                {/* ╔══════════════════════════════════════════════════════╗
-                    ║  PHASE 4 — EXAM BRIEFING & ACKNOWLEDGEMENT          ║
-                    ╚══════════════════════════════════════════════════════╝ */}
                 {phase === PHASE.INSTRUCTIONS && (
-                  <motion.div key="instructions" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.18 }} className="space-y-3">
-                    {/* Header */}
-                    <div className="bg-white border border-slate-200 rounded-2xl px-7 py-5 shadow-sm flex items-center gap-4">
-                      <div className="w-10 h-10 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <FileCode className="w-5 h-5 text-amber-600" />
+                  <motion.div key="instructions" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-3">
+                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '22px 26px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 48, height: 48, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <FileCode style={{ width: 24, height: 24, color: '#FCD34D' }} />
                       </div>
                       <div>
-                        <h2 className="text-[17px] font-bold text-slate-900 tracking-tight leading-none mb-1">Assessment Briefing</h2>
-                        <p className="text-[13px] text-slate-500">Review all rules and provide your acknowledgement to proceed</p>
+                        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>Assessment Briefing</h2>
+                        <p style={{ fontSize: 13, color: '#64748B' }}>Review all rules and provide your acknowledgement to proceed</p>
                       </div>
                     </div>
-
-                    {/* Stats row */}
-                    <div className="grid grid-cols-3 gap-2.5">
-                      {[
-                        { label: 'Modules',  value: '3 Sections' },
-                        { label: 'Duration', value: '60 Minutes' },
-                        { label: 'Domain',   value: schedule?.interview?.candidate?.domain?.name || 'General' },
-                      ].map((s, i) => (
-                        <div key={i} className="bg-white border border-slate-200 rounded-xl px-4 py-4 shadow-sm text-center">
-                          <p className="text-[15px] font-bold text-slate-900 leading-none mb-1">{s.value}</p>
-                          <p className="text-[11px] text-slate-400 font-medium">{s.label}</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {[{ label: 'Modules', value: '3 Sections' }, { label: 'Duration', value: '60 Minutes' }, { label: 'Domain', value: schedule?.interview?.candidate?.domain?.name || 'General' }].map((s, i) => (
+                        <div key={i} style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px', textAlign: 'center' }}>
+                          <p style={{ fontSize: 15, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>{s.value}</p>
+                          <p style={{ fontSize: 11, color: '#475569' }}>{s.label}</p>
                         </div>
                       ))}
                     </div>
-
-                    {/* Rules */}
-                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                      <div className="px-6 py-3.5 border-b border-slate-100 bg-slate-50">
-                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Proctoring Rules & Regulations</p>
+                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Proctoring Rules & Regulations</p>
                       </div>
-                      <div className="divide-y divide-slate-100">
-                        {[
-                          { icon: Shield,  title: 'Continuous Webcam Monitoring',  desc: 'Biometric face verification remains active throughout your session.',              color: 'text-blue-600',   bg: 'bg-blue-50 border-blue-100' },
-                          { icon: Monitor, title: 'Fullscreen Enforcement',         desc: 'Exiting fullscreen mode will immediately trigger a proctoring infraction.',     color: 'text-violet-600', bg: 'bg-violet-50 border-violet-100' },
-                          { icon: Lock,    title: 'Clipboard Restrictions',         desc: 'Copy, paste, and right-click operations are disabled during the assessment.',    color: 'text-amber-600',  bg: 'bg-amber-50 border-amber-100' },
-                          { icon: Clock,   title: 'Auto-Submit on Timeout',         desc: 'Your answers are automatically submitted when the session timer expires.',       color: 'text-red-600',    bg: 'bg-red-50 border-red-100' },
-                        ].map((rule, idx) => (
-                          <div key={idx} className="flex items-start gap-4 px-6 py-4 hover:bg-slate-50/50 transition-colors">
-                            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center flex-shrink-0 mt-0.5 ${rule.bg}`}>
-                              <rule.icon className={`w-4 h-4 ${rule.color}`} />
-                            </div>
-                            <div>
-                              <p className="text-[13px] font-semibold text-slate-800">{rule.title}</p>
-                              <p className="text-[12px] text-slate-500 mt-0.5 leading-relaxed">{rule.desc}</p>
-                            </div>
+                      {[
+                        { icon: Shield,  title: 'Continuous Webcam Monitoring', desc: 'Biometric face verification remains active throughout your session.',          color: '#60A5FA', bg: 'rgba(59,130,246,0.1)',  bd: 'rgba(59,130,246,0.2)'  },
+                        { icon: Monitor, title: 'Fullscreen Enforcement',        desc: 'Exiting fullscreen mode will immediately trigger a proctoring infraction.',  color: '#A78BFA', bg: 'rgba(139,92,246,0.1)',  bd: 'rgba(139,92,246,0.2)'  },
+                        { icon: Lock,    title: 'Clipboard Restrictions',        desc: 'Copy, paste, and right-click operations are disabled during the assessment.', color: '#FCD34D', bg: 'rgba(245,158,11,0.1)',  bd: 'rgba(245,158,11,0.2)'  },
+                        { icon: Clock,   title: 'Auto-Submit on Timeout',        desc: 'Your answers are automatically submitted when the session timer expires.',    color: '#F87171', bg: 'rgba(239,68,68,0.1)',   bd: 'rgba(239,68,68,0.2)'   },
+                      ].map((rule, idx, arr) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '13px 20px', borderBottom: idx < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${rule.bd}`, background: rule.bg, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <rule.icon style={{ width: 15, height: 15, color: rule.color }} />
                           </div>
-                        ))}
-                      </div>
+                          <div>
+                            <p style={{ fontSize: 13, fontWeight: 600, color: '#CBD5E1', marginBottom: 3 }}>{rule.title}</p>
+                            <p style={{ fontSize: 11, color: '#475569', lineHeight: 1.5 }}>{rule.desc}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-
-                    {/* Consent + CTA */}
-                    <div className="bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm space-y-4">
-                      <label className="flex items-start gap-3 cursor-pointer select-none">
-                        <input type="checkbox" checked={rulesAgreed} onChange={(e) => setRulesAgreed(e.target.checked)}
-                          className="mt-0.5 w-4 h-4 accent-blue-600 cursor-pointer rounded" />
-                        <span className="text-[13px] text-slate-600 leading-relaxed">
-                          I acknowledge and consent to biometric recording, fullscreen monitoring, and all proctoring rules stated above for this assessment session.
-                        </span>
+                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={rulesAgreed} onChange={e => setRulesAgreed(e.target.checked)} style={{ marginTop: 2, width: 15, height: 15, accentColor: '#3B82F6', cursor: 'pointer' }} />
+                        <span style={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>I acknowledge and consent to biometric recording, fullscreen monitoring, and all proctoring rules stated above for this assessment session.</span>
                       </label>
                       <button disabled={!rulesAgreed} onClick={startInterviewSession}
-                        className="w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-400 text-white text-[13px] font-semibold rounded-xl shadow-lg shadow-blue-600/20 disabled:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <Play className="w-4 h-4" /> Launch Assessment
+                        style={{ width: '100%', height: 50, background: rulesAgreed ? '#3B82F6' : 'rgba(255,255,255,0.04)', border: 'none', borderRadius: 10, color: rulesAgreed ? '#fff' : '#334155', fontSize: 15, fontWeight: 600, cursor: rulesAgreed ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: rulesAgreed ? '0 6px 20px rgba(59,130,246,0.3)' : 'none' }}>
+                        <Play style={{ width: 16, height: 16 }} /> Launch Assessment
                       </button>
                     </div>
                   </motion.div>
@@ -1014,322 +1219,507 @@ export default function InterviewRoom() {
               </AnimatePresence>
             </div>
           </main>
+
+          <footer style={{ height: 42, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+            <p style={{ fontSize: 11, color: '#1E293B' }}>© 2024 AgnoHire Secure Interview Systems. All data encrypted via 256-bit TLS.</p>
+            <div style={{ display: 'flex', gap: 18 }}>
+              {['Privacy Policy', 'Security Standards', 'Support'].map(link => (
+                <button key={link} style={{ fontSize: 11, color: '#334155', background: 'none', border: 'none', cursor: 'pointer' }}>{link}</button>
+              ))}
+            </div>
+          </footer>
+
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-slate-700">
+    <div className="dark min-h-screen bg-[#060814] text-white flex flex-col font-sans selection:bg-blue-500/30 selection:text-white">
       {/* Top Banner Navigation */}
-      <header className={`px-6 py-4 flex items-center justify-between sticky top-0 z-40 transition-colors ${phase === PHASE.INTERVIEW ? 'bg-slate-900 border-b border-slate-800 text-white' : 'bg-white border-b border-slate-200 text-slate-700'}`}>
+      <header className="px-6 py-4 flex items-center justify-between sticky top-0 z-40 bg-[#0C101F] border-b border-slate-900 text-white">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-xl text-white shadow-md shadow-blue-200">
-            <Cpu className="w-6 h-6" />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <span className="text-white font-extrabold text-xl tracking-tighter">A</span>
           </div>
           <div>
-            <h1 className={`text-lg font-bold tracking-tight ${phase === PHASE.INTERVIEW ? 'text-white' : 'text-slate-800'}`}>AgnoHire</h1>
-            <p className="text-xs text-slate-400 font-medium">Enterprise Proctor System</p>
+            <h1 className="text-lg font-bold tracking-tight text-white leading-none">AgnoHire</h1>
           </div>
         </div>
 
         {phase === PHASE.INTERVIEW && (
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-2xl border border-slate-700 shadow-sm text-sm">
-              <Clock className="w-4 h-4 text-blue-400 animate-pulse" />
-              <span className="font-mono font-bold text-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="border border-blue-500/30 bg-[#060814] px-4 py-2 rounded-full flex items-center gap-2 text-blue-400 font-bold text-xs tracking-wider shadow-inner">
+              <span className="text-slate-500 text-[10px] font-mono">TIME REMAINING</span>
+              <span className="font-mono text-sm font-black">
                 {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
               </span>
             </div>
 
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-semibold text-emerald-400">
-              <Shield className="w-3.5 h-3.5" />
-              <span>Security Locked</span>
-            </div>
+            <button className="w-10 h-10 border border-slate-800 bg-[#060814] rounded-xl flex items-center justify-center hover:bg-slate-800 transition-colors cursor-pointer text-slate-400 hover:text-white">
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
           </div>
         )}
       </header>
 
       {/* Main Container */}
-      <main className={`flex-grow flex flex-col ${phase === PHASE.INTERVIEW ? 'w-full p-0 max-w-none' : 'items-center justify-center p-6 max-w-7xl w-full mx-auto'}`}>
+      <main className="flex-grow flex flex-col w-full p-0 max-w-none">
         <AnimatePresence mode="wait">
           {/* ACTIVE ASSESSMENT INTERVIEW WORKSPACE */}
           {phase === PHASE.INTERVIEW && q && (
             <motion.div
               key="interview"
-              className="relative w-full h-[calc(100vh-76px)] flex items-stretch overflow-hidden bg-slate-950 text-slate-100 font-sans"
+              className="relative w-full min-h-[calc(100vh-72px)] bg-[#060814] text-slate-200 font-sans"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              {/* LEFT COLUMN: Question & Selection details (45%) */}
-              <div className="w-[45%] border-r border-slate-800/80 flex flex-col h-full bg-slate-900/40 relative">
-                {/* Header info */}
-                <div className="bg-slate-900/60 px-6 py-4 border-b border-slate-850 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase text-blue-400 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
-                      {getActiveSectionName()}
-                    </span>
-                    <span className="text-slate-750 text-xs">|</span>
-                    <span className="text-xs text-slate-400 font-bold">
-                      Question {currentQ + 1} of {questions.length}
-                    </span>
-                  </div>
-                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase border ${
-                    q.difficulty === 'hard' 
-                      ? 'text-red-400 bg-red-500/10 border-red-500/20' 
-                      : q.difficulty === 'medium' 
-                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' 
-                      : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                  }`}>
-                    {q.difficulty}
-                  </span>
-                </div>
-
-                {/* Progress bar */}
-                <div className="h-[2px] bg-slate-800 w-full">
-                  <motion.div
-                    className="h-full bg-blue-500"
-                    style={{ width: `${progressPercent}%` }}
-                    animate={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-
-                {/* Scrollable Question Content */}
-                <div className="p-6 md:p-8 flex-1 overflow-y-auto space-y-6">
-                  <div>
-                    <h3 className="text-lg font-bold text-white leading-relaxed whitespace-pre-line mb-6 tracking-tight">
-                      {q.text}
-                    </h3>
-                  </div>
-
-                  {/* MCQ choices (rendered on Left Pane to align perfectly with question details!) */}
-                  {q.type === 'mcq' && q.options && (
-                    <div className="space-y-3 mt-4">
-                      {Object.entries(q.options).map(([key, val]) => (
-                        <label
-                          key={key}
-                          className={`p-4 border rounded-2xl cursor-pointer flex items-center gap-4 transition-all ${
-                            answers[q.id] === key 
-                              ? 'border-blue-500 bg-blue-500/5 shadow-md shadow-blue-500/5' 
-                              : 'border-slate-800 bg-slate-900/30 hover:bg-slate-900/60 hover:border-slate-700'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={`choices-${q.id}`}
-                            value={key}
-                            checked={answers[q.id] === key}
-                            onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: key }))}
-                            className="w-4 h-4 text-blue-500 focus:ring-blue-500 bg-slate-950 border-slate-800 cursor-pointer accent-blue-500"
-                          />
-                          <span className="text-sm text-slate-200">
-                            <span className="text-blue-400 mr-2 uppercase font-bold">{key}.</span> {val}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* RIGHT COLUMN: Code editor / Text drafting workspace / Scratchpad (55%) */}
-              <div className="w-[55%] flex flex-col h-full bg-slate-955 relative">
-                {/* Text or MCQ Scratchpad/Workspace */}
-                {q.type !== 'coding' ? (
-                  <div className="flex-grow flex flex-col p-6 overflow-hidden">
-                    {q.type === 'text' ? (
-                      <div className="flex-grow flex flex-col space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-850 pb-3">
-                          <div className="flex items-center gap-2">
-                            <FileCode className="w-4 h-4 text-blue-400" />
-                            <span className="text-xs font-bold text-slate-300">Solution Answer Box</span>
-                          </div>
-                          <span className="text-xs text-slate-500">Structured markdown text supported</span>
-                        </div>
-                        <textarea
-                          placeholder="Type your structured technical solution here..."
-                          value={answers[q.id] || ''}
-                          onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                          className="flex-1 w-full bg-slate-900/30 border border-slate-880 rounded-2xl focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none p-4 text-sm font-medium leading-relaxed resize-none text-slate-200"
-                        />
-                        <div className="flex justify-between text-xs text-slate-500 mt-2 font-medium">
-                          <span>Word Count: {answers[q.id] ? answers[q.id].trim().split(/\s+/).length : 0} words</span>
-                          <span>Auto-save active</span>
-                        </div>
-                      </div>
-                    ) : (
-                      /* MCQ - Scratchpad draft sheet */
-                      <div className="flex-grow flex flex-col space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-850 pb-3">
-                          <div className="flex items-center gap-2">
-                            <Code className="w-4 h-4 text-emerald-400" />
-                            <span className="text-xs font-bold text-slate-300">Candidate Draft Sheet / Scratchpad</span>
-                          </div>
-                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-widest font-mono">Drafting</span>
-                        </div>
-                        <textarea
-                          placeholder="Use this interactive scratchpad to perform calculations, draft pseudocode, or outline your algorithm notes..."
-                          value={scratchpadText}
-                          onChange={(e) => setScratchpadText(e.target.value)}
-                          className="flex-grow w-full bg-slate-905 border border-slate-850 rounded-2xl focus:border-slate-750 focus:outline-none p-4 text-xs font-mono leading-relaxed resize-none text-slate-400 placeholder:text-slate-600"
-                        />
-                        <div className="text-[10px] text-slate-600 text-right">
-                          Recruiters may review scratchpad drafts to evaluate step-by-step logic.
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  /* Coding Lab Panel */
-                  <div className="flex-grow flex flex-col overflow-hidden">
-                    {/* Language and Tab panel header */}
-                    <div className="bg-slate-900/80 px-4 py-2 border-b border-slate-850 flex items-center justify-between text-xs text-slate-400">
-                      <div className="flex items-center gap-2">
-                        <FileCode className="w-4 h-4 text-blue-400 animate-pulse" />
-                        <span className="font-bold font-mono text-slate-300">solution.{selectedLang === 'python' ? 'py' : selectedLang === 'cpp' ? 'cpp' : 'js'}</span>
-                      </div>
-                      
-                      <select
-                        value={selectedLang}
-                        onChange={(e) => {
-                          setSelectedLang(e.target.value);
-                          setAnswers((prev) => ({
-                            ...prev,
-                            [q.id]: q.options?.starters?.[e.target.value] || '',
-                          }));
-                        }}
-                        className="bg-slate-850 border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer font-mono"
-                      >
-                        <option value="javascript">JavaScript (Node)</option>
-                        <option value="python">Python 3</option>
-                        <option value="cpp">C++ (GCC)</option>
-                      </select>
+              {(() => {
+                // Shared camera widget
+                const renderCandidateCameraCard = () => (
+                  <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex flex-col gap-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white uppercase tracking-widest font-mono flex items-center gap-2">
+                        <Square className="w-4 h-4 text-slate-500" /> Camera (live)
+                      </span>
+                      <span className="text-emerald-400 border border-emerald-500/20 bg-emerald-950/20 px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono tracking-widest uppercase">
+                        Active
+                      </span>
                     </div>
 
-                    {/* Coding Workspace with line numbers */}
-                    <div className="flex-1 flex overflow-hidden bg-slate-950 font-mono text-xs">
-                      {/* Simulated line rails */}
-                      <div className="w-12 bg-slate-900/40 border-r border-slate-900/80 text-right select-none pr-3 py-4 text-slate-600 font-mono leading-[20px] select-none">
-                        {Array.from({ length: Math.max((answers[q.id] || q.options?.starters?.[selectedLang] || '').split('\n').length, 25) }).map((_, i) => (
-                          <div key={i} className="h-5">{i + 1}</div>
-                        ))}
-                      </div>
-                      
-                      {/* Editor Textarea */}
-                      <textarea
-                        value={answers[q.id] || q.options?.starters?.[selectedLang] || ''}
-                        onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                        className="flex-grow bg-transparent text-emerald-400 p-4 focus:outline-none leading-[20px] resize-none selection:bg-slate-850 border-0 focus:ring-0"
-                      />
-                    </div>
-
-                    {/* Expandable Compiler Logs Drawer */}
-                    {runLogs.length > 0 && (
-                      <div className="max-h-[160px] overflow-y-auto bg-slate-900 border-t border-slate-850 p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap divide-y divide-slate-850">
-                        {runLogs.map((log, lIdx) => (
-                          <div key={lIdx} className="py-1">
-                            {log}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Compile execution status bar */}
-                    <div className="bg-slate-900/60 px-4 py-3 border-t border-slate-850 flex justify-between items-center">
-                      <span className="text-xs text-slate-500 font-medium">Auto-testing enabled against test constraints</span>
-                      <button
-                        onClick={handleRunCode}
-                        disabled={runningCode}
-                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800/80 text-white text-xs font-semibold py-2 px-4 rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
-                      >
-                        {runningCode ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Play className="w-3.5 h-3.5" />
-                        )}
-                        <span>Run Compiler</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Workspace action drawer */}
-                <div className="bg-slate-900/30 px-6 py-4 border-t border-slate-850 flex justify-end">
-                  <button
-                    onClick={handleNextQuestion}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 px-6 rounded-2xl shadow-lg hover:shadow-blue-500/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <span>{currentQ < questions.length - 1 ? 'Save & Next Question' : 'Complete Assessment'}</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* FLOATING CORNER PIP WEB-CAM WITH HUD (Absolute overlay bottom-right) */}
-              <div className="absolute bottom-20 right-6 z-50 pointer-events-none">
-                <AnimatePresence>
-                  {!isProctorCollapsed ? (
-                    <motion.div
-                      className="bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-800 p-3 flex flex-col items-center shadow-2xl pointer-events-auto max-w-[170px]"
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.9, opacity: 0 }}
-                    >
-                      {/* Drag / Collapsible Header tab */}
-                      <div className="flex items-center justify-between w-full mb-2 pb-1.5 border-b border-slate-800/60">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-                          Proctor Active
-                        </span>
-                        <button
-                          onClick={() => setIsProctorCollapsed(true)}
-                          className="text-slate-500 hover:text-white p-0.5 rounded transition-colors"
-                        >
-                          <EyeOff className="w-3 h-3" />
-                        </button>
-                      </div>
-
-                      {/* Floating round webcam portal */}
-                      <div className="aspect-square w-24 h-24 bg-slate-950 rounded-full border-2 border-blue-500 overflow-hidden relative shadow-lg shadow-blue-500/10">
+                    {/* Camera view inside card */}
+                    <div className="bg-[#060814] border border-slate-800 rounded-xl overflow-hidden aspect-video relative flex items-center justify-center shadow-inner">
+                      {webcamOn ? (
                         <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
+                      ) : (
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-600">
+                            <Camera className="w-5 h-5 animate-pulse" />
+                          </div>
+                          <p className="text-xs text-slate-500 font-medium text-center px-4">Checking hardware camera permissions...</p>
+                        </div>
+                      )}
+
+                      {/* HUD Overlay elements */}
+                      <div className="absolute inset-0 pointer-events-none" />
+                      
+                      {/* Laser scanner scanning effect */}
+                      {webcamOn && (
+                        <div className="absolute left-0 w-full h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_8px_rgba(34,211,238,0.6)] pointer-events-none animate-[scan_4s_infinite_ease-in-out]" />
+                      )}
+
+                      {/* Cyber dotted mesh scanner grid overlay */}
+                      <div 
+                        className="absolute inset-0 pointer-events-none opacity-20"
+                        style={{
+                          backgroundImage: `
+                            linear-gradient(rgba(34, 211, 238, 0.1) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(34, 211, 238, 0.1) 1px, transparent 1px)
+                          `,
+                          backgroundSize: '20px 20px'
+                        }}
+                      />
+
+                      {/* Cyan L-shaped anchors */}
+                      <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-cyan-400/70 pointer-events-none" />
+                      <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-cyan-400/70 pointer-events-none" />
+                      <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-cyan-400/70 pointer-events-none" />
+                      <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-cyan-400/70 pointer-events-none" />
+
+                      {/* Centered face detection oval template */}
+                      {webcamOn && (
+                        <div className="absolute w-28 h-36 border border-cyan-400/30 rounded-[50%] pointer-events-none shadow-[0_0_15px_rgba(34,211,238,0.05)]" />
+                      )}
+
+                      {/* Recording badge */}
+                      <div className="absolute top-3 left-3 bg-red-950/60 text-red-400 border border-red-500/20 px-2.5 py-0.5 rounded-md text-[10px] font-bold font-mono tracking-wider flex items-center gap-1.5 shadow-md">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                        <span>REC</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 px-1">
+                      <span className="flex items-center gap-1.5"><Square className="w-3.5 h-3.5 text-slate-500" /> Validated</span>
+                      <span className="text-emerald-500 font-bold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Live
+                      </span>
+                    </div>
+                  </div>
+                );
+
+                if (q.type !== 'coding') {
+                  // Standard Speech/MCQ environment overhual
+                  return (
+                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 items-start">
+                      
+                      {/* Left Column (8 of 12 columns) */}
+                      <div className="lg:col-span-8 flex flex-col gap-6 w-full">
                         
-                        {/* Biometric Scan Line */}
-                        <div className="absolute inset-0 bg-blue-500/5 flex items-center justify-center">
-                          <div className="w-full h-[1.5px] bg-blue-500/40 absolute top-1/2 left-0 shadow shadow-blue-500 animate-bounce" />
+                        {/* Metrics Bar */}
+                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 relative overflow-hidden shadow-lg grid grid-cols-2">
+                          {/* Segment 1: Question indicator */}
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Question</span>
+                            <span className="text-3xl font-black text-blue-400 mt-1 font-mono">
+                              {currentQ + 1} <span className="text-slate-700 text-lg">/</span> {questions.length}
+                            </span>
+                          </div>
+
+                          {/* Middle border separator */}
+                          <div className="absolute left-1/2 top-4 bottom-4 w-[1px] bg-slate-800/60" />
+
+                          {/* Segment 2: Time limit per question */}
+                          <div className="flex flex-col pl-6">
+                            <div className="flex items-center gap-2">
+                              <Square className="w-4 h-4 text-slate-500" />
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Time Per Question</span>
+                            </div>
+                            <span className="text-3xl font-black text-amber-500 mt-1 font-mono">
+                              {timeLeft % 60}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Question display card */}
+                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-8 relative overflow-hidden shadow-lg">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-4 block">Question Display</span>
+                          <h3 className="text-2xl md:text-3xl font-extrabold text-white leading-snug tracking-tight mb-6 whitespace-pre-line">
+                            {q.text}
+                          </h3>
+
+                          <div className="flex flex-wrap gap-2">
+                            <span className={`text-[10px] px-3 py-1 rounded-lg font-bold font-mono tracking-wider uppercase border ${
+                              q.difficulty === 'hard' 
+                                ? 'text-red-400 border-red-500/20 bg-red-950/20' 
+                                : q.difficulty === 'medium' 
+                                ? 'text-amber-400 border-amber-500/20 bg-amber-950/20' 
+                                : 'text-emerald-400 border-emerald-500/20 bg-emerald-950/20'
+                            }`}>
+                              {q.difficulty}
+                            </span>
+                            <span className="text-[10px] px-3 py-1 rounded-lg font-bold font-mono tracking-wider uppercase text-blue-400 border border-blue-500/20 bg-blue-950/20">
+                              AI Interviewer
+                            </span>
+                            {q.type !== 'mcq' && (
+                              <button
+                                onClick={() => setShowManualInput(!showManualInput)}
+                                className={`text-[10px] px-3 py-1 rounded-lg font-bold font-mono tracking-wider uppercase border cursor-pointer transition-all duration-200 ${
+                                  showManualInput
+                                    ? 'text-emerald-450 border-emerald-500/30 bg-emerald-950/20'
+                                    : 'text-slate-400 border-slate-700 bg-slate-800/30 hover:border-slate-600 hover:text-white'
+                                }`}
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  <FileText className="w-3.5 h-3.5" />
+                                  {showManualInput ? 'Hide Typing Panel' : 'Type Answer Manually'}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* MCQ options selection grid */}
+                        {q.type === 'mcq' && q.options && (
+                          <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex flex-col gap-4">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Select Response Option</span>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {Object.entries(q.options).map(([key, val]) => {
+                                const isSelected = answers[q.id] === key;
+                                return (
+                                  <label
+                                    key={key}
+                                    className={`p-4 border rounded-2xl cursor-pointer flex items-center gap-4 transition-all relative overflow-hidden group ${
+                                      isSelected 
+                                        ? 'border-blue-500/80 bg-blue-950/20 shadow-md' 
+                                        : 'border-slate-800 bg-[#060814] hover:bg-slate-800/40 hover:border-slate-700'
+                                    }`}
+                                  >
+                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all ${
+                                      isSelected
+                                        ? 'border-blue-500 bg-blue-500 text-white shadow-sm'
+                                        : 'border-slate-700 bg-slate-800 group-hover:border-slate-600'
+                                    }`}>
+                                      <input
+                                        type="radio"
+                                        name={`choices-${q.id}`}
+                                        value={key}
+                                        checked={isSelected}
+                                        onChange={() => {
+                                          setAnswers((prev) => ({ ...prev, [q.id]: key }));
+                                          latestTranscriptRef.current = key;
+                                        }}
+                                        className="sr-only"
+                                      />
+                                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                    </div>
+                                    <span className="text-sm font-semibold transition-colors text-slate-300 group-hover:text-white">
+                                      <span className={`mr-2 uppercase font-black transition-colors ${isSelected ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-400'}`}>{key}</span>
+                                      {val}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Speech transcription editor (Voice mode essay questions) */}
+                        {q.type !== 'mcq' && showManualInput && (
+                          <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex flex-col gap-4 animate-[fadeIn_0.2s_ease-out]">
+                            <div className="flex items-center justify-between border-b border-slate-900 pb-3">
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 font-mono">
+                                <Volume2 className="w-4 h-4 text-blue-400 animate-pulse" /> Speech Transcription Monitor
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    if (isTtsSpeaking) {
+                                      if (window.speechSynthesis) window.speechSynthesis.cancel();
+                                      setIsTtsSpeaking(false);
+                                      startSpeechRecognition();
+                                    } else if (isListening) {
+                                      stopSpeechRecognition();
+                                    } else {
+                                      startSpeechRecognition();
+                                    }
+                                  }}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all cursor-pointer uppercase font-mono ${
+                                    isListening 
+                                      ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/20 animate-pulse' 
+                                      : 'bg-blue-950/20 text-blue-400 border-blue-500/20'
+                                  }`}
+                                >
+                                  <Mic className={`w-3.5 h-3.5 ${isListening ? 'text-emerald-400' : 'text-blue-400'}`} />
+                                  <span>{isListening ? 'Listening' : 'Mic Paused'}</span>
+                                </button>
+                                {answers[q.id] && (
+                                  <span className="text-[10px] text-emerald-400 bg-emerald-950/20 px-2.5 py-1 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-wider font-mono">
+                                    Saved Live
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className={`min-h-[140px] rounded-xl border transition-all duration-300 flex flex-col justify-center overflow-hidden bg-[#060814] ${
+                              isListening ? 'border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.02)]' : 'border-slate-800 focus-within:border-blue-500/60'
+                            }`}>
+                              {answers[q.id] ? (
+                                <textarea
+                                  value={answers[q.id]}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setAnswers((prev) => ({ ...prev, [q.id]: val }));
+                                    latestTranscriptRef.current = val;
+                                    accumulatedTextRef.current = val;
+                                  }}
+                                  placeholder="Spoken answers will be transcribed here automatically."
+                                  className="w-full min-h-[140px] bg-transparent text-sm leading-relaxed text-slate-200 p-5 focus:outline-none resize-none placeholder-slate-650 font-sans border-0 focus:ring-0"
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-center p-6 space-y-3">
+                                  <div className="w-10 h-10 rounded-full bg-[#0C101F] border border-slate-800 flex items-center justify-center text-slate-500">
+                                    <Mic className="w-5 h-5 animate-pulse" />
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-400">Waiting for candidate voice response...</p>
+                                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                                      Speak clearly to allow the AI model to capture your answer, or click below to type your essay response manually.
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: ' ' }))}
+                                    className="mt-2 text-[10px] font-bold text-blue-400 flex items-center gap-1.5 bg-blue-950/20 px-3 py-2 rounded-lg border border-blue-500/20 hover:bg-blue-950/40 hover:text-white transition-all cursor-pointer"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" /> Type Answer Manually
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1 font-mono">
+                              <span>Characters: {answers[q.id] ? answers[q.id].length : 0}</span>
+                              <span>Auto-Save Active</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 flex justify-between items-center gap-4 shadow-lg">
+                          <button
+                            onClick={() => {
+                              if (isListening) {
+                                stopSpeechRecognition();
+                              } else {
+                                startSpeechRecognition();
+                              }
+                            }}
+                            className={`flex items-center justify-center gap-3 px-6 py-4 border rounded-xl font-bold text-sm transition-all duration-200 cursor-pointer flex-1 ${
+                              isListening 
+                                ? 'border-red-500/30 bg-red-950/20 text-red-400 hover:bg-red-950/40' 
+                                : 'border-slate-800 bg-transparent text-white hover:bg-slate-800/40 hover:border-slate-700'
+                            }`}
+                          >
+                            <Square className={`w-4 h-4 ${isListening ? 'text-red-400 fill-red-400' : 'text-slate-500'}`} />
+                            <span>{isListening ? 'Stop Record' : 'Start Record'}</span>
+                          </button>
+
+                          <button
+                            onClick={handleNextQuestion}
+                            className="flex items-center justify-center gap-3 px-6 py-4 border border-slate-800 bg-transparent text-white font-bold text-sm rounded-xl hover:bg-slate-800/40 hover:border-slate-700 transition-all duration-200 cursor-pointer flex-1"
+                          >
+                            <span>{currentQ < questions.length - 1 ? 'Next Question' : 'Complete Assessment'}</span>
+                            <Square className="w-4 h-4 text-slate-500" />
+                          </button>
                         </div>
                       </div>
 
-                      {/* Small compliance pills */}
-                      <div className="mt-2.5 space-y-1 w-full text-[9px]">
-                        <div className="flex items-center justify-between px-1.5 py-0.5 bg-slate-950/40 rounded border border-slate-850 text-slate-400">
-                          <span>Face:</span>
-                          <span className="font-semibold text-emerald-400 flex items-center gap-0.5">
-                            <Check className="w-2.5 h-2.5" /> Ok
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between px-1.5 py-0.5 bg-slate-950/40 rounded border border-slate-850 text-slate-400">
-                          <span>Gaze:</span>
-                          <span className="font-semibold text-emerald-400 flex items-center gap-0.5">
-                            <Check className="w-2.5 h-2.5" /> Centered
-                          </span>
+                      {/* Right Column (4 of 12 columns) */}
+                      <div className="lg:col-span-4 flex flex-col gap-6 w-full">
+                        {renderCandidateCameraCard()}
+
+                        {/* Network Speed Widget */}
+                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex items-center justify-between relative overflow-hidden">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-center text-slate-400">
+                              <Square className="w-5 h-5 text-slate-500" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono block">Network Speed</span>
+                              <span className="text-base font-bold text-emerald-400 mt-0.5 block leading-none">Good</span>
+                            </div>
+                          </div>
+
+                          {/* Graphical signal strength bars */}
+                          <div className="flex items-end gap-1.5 h-7">
+                            <div className="w-1.5 h-2 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
+                            <div className="w-1.5 h-3 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
+                            <div className="w-1.5 h-4 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
+                            <div className="w-1.5 h-5 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
+                            <div className="w-1.5 h-6 bg-gradient-to-t from-blue-600 to-blue-400 rounded-sm" />
+                          </div>
                         </div>
                       </div>
-                    </motion.div>
-                  ) : (
-                    /* Collapsed proctor mini indicator */
-                    <motion.button
-                      onClick={() => setIsProctorCollapsed(false)}
-                      className="bg-emerald-500/10 border-2 border-emerald-500/30 backdrop-blur-md rounded-full w-10 h-10 flex items-center justify-center shadow-xl hover:bg-emerald-500/20 text-emerald-400 pointer-events-auto transition-all animate-pulse animate-duration-1000"
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.9, opacity: 0 }}
-                      title="Proctor active. Click to restore camera feed view."
-                    >
-                      <Shield className="w-4 h-4" />
-                    </motion.button>
-                  )}
-                </AnimatePresence>
-              </div>
+                    </div>
+                  );
+                } else {
+                  // Coding environment overhaul under cyber dark theme
+                  return (
+                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 items-stretch">
+                      
+                      {/* Left stack (5 of 12 cols): prompt card & camera */}
+                      <div className="lg:col-span-5 flex flex-col gap-6 overflow-y-auto max-h-[calc(100vh-140px)] pr-1">
+                        
+                        {/* Metrics bar */}
+                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-5 relative overflow-hidden shadow-lg grid grid-cols-2">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">Question</span>
+                            <span className="text-xl font-black text-blue-400 font-mono mt-0.5">
+                              {currentQ + 1} / {questions.length}
+                            </span>
+                          </div>
+                          <div className="flex flex-col pl-4 border-l border-slate-800/80">
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">Time Per Question</span>
+                            <span className="text-xl font-black text-amber-500 font-mono mt-0.5 flex items-center gap-1.5">
+                              <Clock className="w-4 h-4 text-amber-500 animate-pulse" />
+                              {timeLeft % 60}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Question details */}
+                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 relative overflow-hidden shadow-lg flex flex-col gap-4">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Question Prompt</span>
+                          <h3 className="text-lg font-bold text-white leading-relaxed tracking-tight whitespace-pre-line">
+                            {q.text}
+                          </h3>
+                          <div className="flex gap-2">
+                            <span className="text-[9px] px-2.5 py-0.5 rounded bg-amber-950/20 text-amber-400 border border-amber-500/20 font-bold uppercase tracking-wider font-mono">
+                              {q.difficulty}
+                            </span>
+                            <span className="text-[9px] px-2.5 py-0.5 rounded bg-blue-950/20 text-blue-400 border border-blue-500/20 font-bold uppercase tracking-wider font-mono">
+                              Coding Lab
+                            </span>
+                          </div>
+                        </div>
+
+                        {renderCandidateCameraCard()}
+                      </div>
+
+                      {/* Right stack (7 of 12 cols): coding compiler workspace */}
+                      <div className="lg:col-span-7 flex flex-col bg-[#0C101F] border border-blue-500/10 rounded-2xl overflow-hidden shadow-xl min-h-[500px]">
+                        {/* Header toolbar */}
+                        <div className="bg-[#0A0D14] px-4 py-3.5 border-b border-slate-850 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 text-slate-300">
+                            <FileCode className="w-4 h-4 text-blue-400" />
+                            <span className="font-bold font-mono">solution.{selectedLang === 'python' ? 'py' : selectedLang === 'cpp' ? 'cpp' : 'js'}</span>
+                          </div>
+                          
+                          <select
+                            value={selectedLang}
+                            onChange={(e) => {
+                              setSelectedLang(e.target.value);
+                              setAnswers((prev) => ({
+                                ...prev,
+                                [q.id]: q.options?.starters?.[e.target.value] || '',
+                              }));
+                            }}
+                            className="bg-[#060814] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer font-mono"
+                          >
+                            <option value="javascript">JavaScript (Node)</option>
+                            <option value="python">Python 3</option>
+                            <option value="cpp">C++ (GCC)</option>
+                          </select>
+                        </div>
+
+                        {/* Editor body */}
+                        <div className="flex-grow flex overflow-hidden bg-[#060814] font-mono text-xs">
+                          <div className="w-12 bg-[#0A0D14]/60 border-r border-slate-900 text-right select-none pr-3 py-4 text-slate-700 font-mono leading-[20px]">
+                            {Array.from({ length: Math.max((answers[q.id] || q.options?.starters?.[selectedLang] || '').split('\n').length, 25) }).map((_, i) => (
+                              <div key={i} className="h-5">{i + 1}</div>
+                            ))}
+                          </div>
+                          
+                          <textarea
+                            value={answers[q.id] || q.options?.starters?.[selectedLang] || ''}
+                            onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                            className="flex-grow bg-transparent text-emerald-450 p-4 focus:outline-none leading-[20px] resize-none selection:bg-slate-800 border-0 focus:ring-0 font-mono"
+                          />
+                        </div>
+
+                        {/* Logs section */}
+                        {runLogs.length > 0 && (
+                          <div className="max-h-[140px] overflow-y-auto bg-[#0A0D14] border-t border-slate-850 p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap divide-y divide-slate-800">
+                            {runLogs.map((log, lIdx) => (
+                              <div key={lIdx} className="py-1 text-cyan-400/90">{log}</div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Compilation footer action bar */}
+                        <div className="bg-[#0A0D14] px-4 py-3 border-t border-slate-850 flex justify-between items-center">
+                          <button
+                            onClick={handleRunCode}
+                            disabled={runningCode}
+                            className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-700 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            {runningCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                            <span>Run Sandbox Compiler</span>
+                          </button>
+
+                          <button
+                            onClick={handleNextQuestion}
+                            className="flex items-center gap-1.5 px-4 py-2 border border-slate-800 bg-transparent text-white font-semibold text-xs rounded-lg hover:bg-white hover:text-black transition-all cursor-pointer"
+                          >
+                            <span>{currentQ < questions.length - 1 ? 'Save & Next' : 'Complete Assessment'}</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              })()}
 
               {/* Warning notifications absolute banner */}
               {tabWarnings > 0 && (
@@ -1343,7 +1733,6 @@ export default function InterviewRoom() {
               )}
             </motion.div>
           )}
-
         </AnimatePresence>
       </main>
     </div>

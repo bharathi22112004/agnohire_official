@@ -28,7 +28,11 @@ export default function QuestionBank() {
 
   // Forms
   const [bankForm, setBankForm] = useState({ name: '', domainId: '', recruiterId: '', file: null });
-  const [qForm, setQForm] = useState({ text: '', type: 'mcq', difficulty: 'medium', optionA: '', optionB: '', optionC: '', optionD: '', correctAnswer: 'a', skillTags: '' });
+  const [qForm, setQForm] = useState({ 
+    text: '', type: 'mcq', difficulty: 'medium', 
+    options: [{ id: 'a', text: '' }, { id: 'b', text: '' }, { id: 'c', text: '' }, { id: 'd', text: '' }],
+    correctAnswer: 'a', skillTags: '' 
+  });
   const [aiForm, setAiForm] = useState({ difficulty: 'medium', count: 5 });
   const [activeTab, setActiveTab] = useState('upload'); // 'upload' or 'manual'
 
@@ -116,19 +120,21 @@ export default function QuestionBank() {
         difficulty: qForm.difficulty,
         skillTags: qForm.skillTags.split(',').map(s => s.trim()).filter(Boolean),
         ...(qForm.type === 'mcq' && {
-          options: {
-            a: qForm.optionA,
-            b: qForm.optionB,
-            c: qForm.optionC,
-            d: qForm.optionD
-          },
+          options: qForm.options.reduce((acc, opt) => {
+            if (opt.text.trim()) acc[opt.id] = opt.text.trim();
+            return acc;
+          }, {}),
           correctAnswer: qForm.correctAnswer
         })
       };
       await api.post(`/questions/banks/${activeBank.id}/questions`, payload);
       toast.success('Question added successfully');
       setShowCreateQuestion(false);
-      setQForm({ text: '', type: 'mcq', difficulty: 'medium', optionA: '', optionB: '', optionC: '', optionD: '', correctAnswer: 'a', skillTags: '' });
+      setQForm({ 
+        text: '', type: 'mcq', difficulty: 'medium', 
+        options: [{ id: 'a', text: '' }, { id: 'b', text: '' }, { id: 'c', text: '' }, { id: 'd', text: '' }],
+        correctAnswer: 'a', skillTags: '' 
+      });
       // Reload questions
       handleOpenQuestions(activeBank);
     } catch {
@@ -485,18 +491,56 @@ export default function QuestionBank() {
 
           {qForm.type === 'mcq' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card-header)' }}>
-              <h5 style={{ fontSize: 12, fontWeight: 700, margin: '0 0 8px' }}>Multiple Choice Settings</h5>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h5 style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>Multiple Choice Settings</h5>
+                {qForm.options.length < 6 && (
+                  <Button size="sm" variant="ghost" type="button" onClick={() => {
+                    const nextId = String.fromCharCode(97 + qForm.options.length); // a, b, c...
+                    setQForm({ ...qForm, options: [...qForm.options, { id: nextId, text: '' }] });
+                  }}>+ Add Option</Button>
+                )}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Input label="Option A" value={qForm.optionA} onChange={e => setQForm({ ...qForm, optionA: e.target.value })} required />
-                <Input label="Option B" value={qForm.optionB} onChange={e => setQForm({ ...qForm, optionB: e.target.value })} required />
-                <Input label="Option C" value={qForm.optionC} onChange={e => setQForm({ ...qForm, optionC: e.target.value })} required />
-                <Input label="Option D" value={qForm.optionD} onChange={e => setQForm({ ...qForm, optionD: e.target.value })} required />
+                {qForm.options.map((opt, idx) => (
+                  <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Input 
+                      label={`Option ${opt.id.toUpperCase()}`} 
+                      value={opt.text} 
+                      onChange={e => {
+                        const newOptions = [...qForm.options];
+                        newOptions[idx].text = e.target.value;
+                        setQForm({ ...qForm, options: newOptions });
+                      }} 
+                      required 
+                      style={{ flex: 1 }}
+                    />
+                    {qForm.options.length > 2 && (
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          const newOptions = qForm.options.filter(o => o.id !== opt.id);
+                          // Re-assign IDs to be contiguous a, b, c...
+                          const remapped = newOptions.map((o, i) => ({ ...o, id: String.fromCharCode(97 + i) }));
+                          setQForm({ 
+                            ...qForm, 
+                            options: remapped,
+                            correctAnswer: remapped.some(o => o.id === qForm.correctAnswer) ? qForm.correctAnswer : remapped[0].id
+                          });
+                        }} 
+                        className="btn btn-ghost btn-icon btn-sm" 
+                        style={{ color: 'var(--color-danger)', marginTop: 22 }}
+                        title="Remove Option"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
               <Select label="Correct Option" value={qForm.correctAnswer} onChange={e => setQForm({ ...qForm, correctAnswer: e.target.value })}>
-                <option value="a">Option A</option>
-                <option value="b">Option B</option>
-                <option value="c">Option C</option>
-                <option value="d">Option D</option>
+                {qForm.options.map(opt => (
+                  <option key={opt.id} value={opt.id}>Option {opt.id.toUpperCase()}</option>
+                ))}
               </Select>
             </div>
           )}
