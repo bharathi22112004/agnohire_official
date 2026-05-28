@@ -73,10 +73,10 @@ export const candidatesController = {
       const email = req.body.email ? String(req.body.email).trim().toLowerCase() : undefined;
       if (email) {
         const existing = await prisma.candidate.findFirst({
-          where: { 
-            email, 
+          where: {
+            email,
             id: { not: req.params.id },
-            deletedAt: null 
+            deletedAt: null
           },
         });
         if (existing) {
@@ -84,10 +84,19 @@ export const candidatesController = {
         }
       }
 
-      const candidate = await candidateRepository.update(req.params.id, {
-        ...req.body,
-        ...(email && { email }),
-      });
+      const { name, email: bodyEmail, phone, experienceLevel, skills, status, domainId, additionalInfo } = req.body;
+      const updateData = {
+        ...(name !== undefined && { name: String(name).trim() }),
+        ...((bodyEmail !== undefined || email !== undefined) && { email: (bodyEmail || email || '').trim().toLowerCase() }),
+        ...(phone !== undefined && { phone: phone ? String(phone).trim() : null }),
+        ...(experienceLevel !== undefined && { experienceLevel: String(experienceLevel).trim() }),
+        ...(skills !== undefined && { skills }),
+        ...(status !== undefined && { status }),
+        ...(domainId !== undefined && { domainId }),
+        ...(additionalInfo !== undefined && { additionalInfo }),
+      };
+
+      const candidate = await candidateRepository.update(req.params.id, updateData);
       return success(res, { candidate });
     } catch (err) {
       return error(res, err.message);
@@ -219,7 +228,7 @@ export const candidatesController = {
             },
             select: { id: true }
           });
-          
+
           if (notifyUsers.length > 0) {
             await socketService.notifyMany(notifyUsers.map(u => u.id), {
               type: 'list_uploaded',
@@ -257,15 +266,15 @@ export const candidatesController = {
       // Distribute evenly but enforce limits
       const assignments = [];
       const countsMap = Object.fromEntries(existingCounts.map(ec => [ec.recruiterId, ec.count]));
-      
+
       for (let i = 0; i < candidateIds.length; i++) {
         const candidateId = candidateIds[i];
         const recruiterId = recruiterIds[i % recruiterIds.length];
-        
+
         if (countsMap[recruiterId] >= maxPerRecruiter) {
           return error(res, `Recruiter assignment limit of ${maxPerRecruiter} reached for a selected recruiter`, 403, 'LIMIT_EXCEEDED');
         }
-        
+
         assignments.push({
           candidateId,
           recruiterId,
@@ -322,12 +331,92 @@ export const candidatesController = {
         }
       });
 
+      // Enforce recruiter validation for decision templates (pass, fail, hold)
+      const isResultTemplate = ['pass', 'fail', 'hold'].includes(template.type);
+      if (isResultTemplate) {
+        const unvalidatedCandidates = [];
+        for (const candidate of candidates) {
+          const interview = candidate.interviews[0];
+          if (!interview) {
+            unvalidatedCandidates.push(candidate.name);
+            continue;
+          }
+          const result = await prisma.interviewResult.findUnique({
+            where: { interviewId: interview.id }
+          });
+          if (!result || !result.validatedAt || !result.recruiterDecision) {
+            unvalidatedCandidates.push(candidate.name);
+          }
+        }
+
+        if (unvalidatedCandidates.length > 0) {
+          return error(
+            res,
+            `Cannot send result emails. The following candidates have not been validated by a recruiter yet: ${unvalidatedCandidates.join(', ')}. Please wait for the recruiter to review and validate their scores.`,
+            400,
+            'RECRUITER_VALIDATION_REQUIRED'
+          );
+        }
+      }
+
       let sentCount = 0;
       let failCount = 0;
 
       for (const candidate of candidates) {
-        const interview = candidate.interviews[0];
-        const recruiter = interview?.recruiter;
+        let interview = candidate.interviews[0];
+        let recruiter = interview?.recruiter;
+
+        // If no interview or schedule exists, auto-schedule so they get a valid link
+        if (!interview || !interview.schedule) {
+          const assignment = await prisma.candidateAssignment.findFirst({
+            where: { candidateId: candidate.id },
+            include: { recruiter: true }
+          });
+          const activeRecruiter = assignment?.recruiter || req.user;
+          const defaultDate = new Date();
+          defaultDate.setDate(defaultDate.getDate() + 7);
+          const linkToken = uuidv4();
+
+          const createdInterview = await prisma.interview.create({
+            data: {
+              candidateId: candidate.id,
+              recruiterId: activeRecruiter.id,
+              status: 'scheduled',
+              scheduledAt: defaultDate,
+            }
+          });
+
+          const createdSchedule = await prisma.interviewSchedule.create({
+            data: {
+              interviewId: createdInterview.id,
+              recruiterId: activeRecruiter.id,
+              date: defaultDate,
+              timeStart: '09:00',
+              timeEnd: '18:00',
+              linkToken,
+            }
+          });
+
+          await prisma.candidate.update({
+            where: { id: candidate.id },
+            data: { status: 'scheduled' }
+          });
+
+          interview = {
+            ...createdInterview,
+            recruiter: activeRecruiter,
+            schedule: createdSchedule
+          };
+          recruiter = activeRecruiter;
+        }
+
+        const schedule = interview?.schedule;
+        const scheduleDate = schedule?.date
+          ? new Date(schedule.date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+          : 'TBD';
+        const scheduleTime = (schedule?.timeStart && schedule?.timeEnd)
+          ? `${schedule.timeStart} – ${schedule.timeEnd}`
+          : 'TBD';
 
         let finalHtml = template.bodyHtml;
         let finalSubject = template.subject;
@@ -335,10 +424,12 @@ export const candidatesController = {
         // Replacements
         const replacements = {
           '{{candidateName}}': candidate.name || 'Candidate',
-          '{{link}}': interview?.schedule?.linkToken ? `${process.env.CLIENT_URL || 'http://localhost:5173'}/interview?token=${interview.schedule.linkToken}` : '#',
+          '{{link}}': interview?.schedule?.linkToken ? `${process.env.CLIENT_URL || 'http://localhost:3000'}/interview?token=${interview.schedule.linkToken}` : '#',
           '{{platformName}}': 'AgnoHire',
           '{{recruiterName}}': recruiter?.name || 'Recruitment Team',
-          '{{sectorName}}': candidate.sector?.name || 'our organization'
+          '{{sectorName}}': candidate.sector?.name || 'our organization',
+          '{{date}}': scheduleDate,
+          '{{time}}': scheduleTime
         };
 
         for (const [key, val] of Object.entries(replacements)) {
@@ -396,7 +487,7 @@ export const candidatesController = {
     try {
       const { sectorId } = req.query;
       const where = {};
-      
+
       if (['admin', 'hr'].includes(req.user.role?.name)) {
         where.sectorId = req.user.sectorId;
       } else if (sectorId) {
@@ -577,5 +668,53 @@ export const candidatesController = {
     } catch (err) {
       return error(res, err.message);
     }
+  },
+
+  async bulkDelete(req, res) {
+    try {
+      const { candidateIds } = req.body;
+      if (!candidateIds || !Array.isArray(candidateIds) || candidateIds.length === 0) {
+        return error(res, 'Candidate IDs array is required', 400, 'BAD_REQUEST');
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.interviewResult.deleteMany({
+          where: { interview: { candidateId: { in: candidateIds } } },
+        });
+
+        await tx.interviewSchedule.deleteMany({
+          where: { interview: { candidateId: { in: candidateIds } } },
+        });
+
+        await tx.candidateAnswer.deleteMany({
+          where: { interview: { candidateId: { in: candidateIds } } },
+        });
+
+        await tx.interview.deleteMany({
+          where: { candidateId: { in: candidateIds } },
+        });
+
+        await tx.candidateAssignment.deleteMany({
+          where: { candidateId: { in: candidateIds } },
+        });
+
+        await tx.resume.deleteMany({
+          where: { candidateId: { in: candidateIds } },
+        });
+
+        await tx.emailLog.deleteMany({
+          where: { candidateId: { in: candidateIds } },
+        });
+
+        await tx.candidate.deleteMany({
+          where: { id: { in: candidateIds } },
+        });
+      });
+
+      return success(res, { message: 'Successfully deleted selected candidates' });
+    } catch (err) {
+      return error(res, err.message);
+    }
   }
 };
+

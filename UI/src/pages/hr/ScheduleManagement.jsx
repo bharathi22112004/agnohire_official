@@ -19,11 +19,18 @@ export default function ScheduleManagement() {
   const [statusFilter, setStatusFilter] = useState('');
   const [recruiterFilter, setRecruiterFilter] = useState('');
 
+  // Selection states
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showBulkSelectedConfirm, setShowBulkSelectedConfirm] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [invitingSelected, setInvitingSelected] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
+
   // Modals and Forms
   const [activeCandidate, setActiveCandidate] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', experienceLevel: 'mid' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', experienceLevel: 'mid', additionalInfo: [] });
   const [uploadingResume, setUploadingResume] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
@@ -39,8 +46,12 @@ export default function ScheduleManagement() {
         api.get('/candidates?limit=1000'),
         api.get('/users?limit=100&role=recruiter')
       ]);
-      setCandidates(candidatesRes.data.data.candidates || []);
+      const freshCandidates = candidatesRes.data.data.candidates || [];
+      setCandidates(freshCandidates);
       setRecruiters(usersRes.data.data.users.filter(u => u.role?.name === 'recruiter'));
+      // Keep only selected IDs that are still in the returned candidates list
+      const freshIds = freshCandidates.map(c => c.id);
+      setSelectedIds(prev => prev.filter(id => freshIds.includes(id)));
     } catch {
       toast.error('Failed to load candidate and recruiter queues');
     } finally {
@@ -58,7 +69,8 @@ export default function ScheduleManagement() {
         name: fullCand.name,
         email: fullCand.email,
         phone: fullCand.phone || '',
-        experienceLevel: fullCand.experienceLevel || 'mid'
+        experienceLevel: fullCand.experienceLevel || 'mid',
+        additionalInfo: Array.isArray(fullCand.additionalInfo) ? fullCand.additionalInfo : []
       });
       setIsEditing(false);
       setShowDetail(true);
@@ -67,8 +79,39 @@ export default function ScheduleManagement() {
     }
   }
 
+  function handleAddInfo() {
+    setEditForm(prev => ({
+      ...prev,
+      additionalInfo: [...(prev.additionalInfo || []), { title: '', text: '' }]
+    }));
+  }
+
+  function handleUpdateInfo(index, field, value) {
+    setEditForm(prev => {
+      const updated = [...(prev.additionalInfo || [])];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, additionalInfo: updated };
+    });
+  }
+
+  function handleRemoveInfo(index) {
+    setEditForm(prev => ({
+      ...prev,
+      additionalInfo: (prev.additionalInfo || []).filter((_, idx) => idx !== index)
+    }));
+  }
+
   async function handleUpdateCandidate(e) {
     e.preventDefault();
+    if (!editForm.name || !editForm.name.trim()) {
+      return toast.error('Name is required');
+    }
+    if (!editForm.email || !editForm.email.trim()) {
+      return toast.error('Email address is required and cannot be empty');
+    }
+    if (!editForm.phone || !editForm.phone.trim()) {
+      return toast.error('Phone number is required and cannot be empty');
+    }
     try {
       const res = await api.put(`/candidates/${activeCandidate.id}`, editForm);
       toast.success('Candidate profile updated');
@@ -128,6 +171,63 @@ export default function ScheduleManagement() {
     }
   }
 
+  function handleSelectRow(id) {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }
+
+  function handleSelectAllToggle() {
+    const allFilteredIds = filtered.map(c => c.id);
+    const allAreSelected = allFilteredIds.every(id => selectedIds.includes(id));
+
+    if (allAreSelected) {
+      // Uncheck all currently filtered
+      setSelectedIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
+    } else {
+      // Check all currently filtered
+      setSelectedIds(prev => {
+        const next = [...prev];
+        allFilteredIds.forEach(id => {
+          if (!next.includes(id)) {
+            next.push(id);
+          }
+        });
+        return next;
+      });
+    }
+  }
+
+  async function handleInviteSelected() {
+    setInvitingSelected(true);
+    try {
+      const res = await api.post('/candidates/bulk-schedule', { candidateIds: selectedIds });
+      toast.success(`Successfully sent interview invitations to ${res.data.data.scheduledCount} selected candidates!`);
+      setSelectedIds([]);
+      setShowBulkSelectedConfirm(false);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.error?.message || 'Failed to send invites');
+    } finally {
+      setInvitingSelected(false);
+    }
+  }
+
+  async function handleDeleteSelected() {
+    setDeletingSelected(true);
+    try {
+      await api.post('/candidates/bulk-delete', { candidateIds: selectedIds });
+      toast.success(`Successfully deleted ${selectedIds.length} candidate(s)`);
+      setSelectedIds([]);
+      setShowBulkDeleteConfirm(false);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.error?.message || 'Failed to delete selected candidates');
+    } finally {
+      setDeletingSelected(false);
+    }
+  }
+
   async function handleDeleteCandidate() {
     try {
       await api.delete(`/candidates/${activeCandidate.id}`);
@@ -162,14 +262,13 @@ export default function ScheduleManagement() {
             Monitor recruiter assignment mappings, view schedules, upload resumes, and launch assessment pipelines
           </p>
         </div>
-        {assignedCount > 0 && (
+        {selectedIds.length > 0 && (
           <Button
-            onClick={() => setShowBulkConfirm(true)}
-            loading={bulkScheduling}
-            variant="primary"
-            leftIcon={<Send size={15} />}
+            onClick={() => setShowBulkDeleteConfirm(true)}
+            variant="danger"
+            leftIcon={<Trash2 size={15} />}
           >
-            Bulk Invite All Assigned ({assignedCount})
+            Delete Selected ({selectedIds.length})
           </Button>
         )}
       </div>
@@ -216,6 +315,14 @@ export default function ScheduleManagement() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: 48, paddingLeft: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={filtered.length > 0 && filtered.every(c => selectedIds.includes(c.id))}
+                    onChange={handleSelectAllToggle}
+                    style={{ cursor: 'pointer', width: 16, height: 16, verticalAlign: 'middle' }}
+                  />
+                </th>
                 <th>Candidate Name</th>
                 <th>Assigned Recruiter</th>
                 <th>Status</th>
@@ -226,13 +333,13 @@ export default function ScheduleManagement() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: 24 }}>
                     <div className="skeleton" style={{ height: 40 }} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
                     No candidates matched the filter options.
                   </td>
                 </tr>
@@ -241,6 +348,14 @@ export default function ScheduleManagement() {
                   const rec = c.assignments?.[0]?.recruiter;
                   return (
                     <tr key={c.id}>
+                      <td style={{ width: 48, paddingLeft: 16 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(c.id)}
+                          onChange={() => handleSelectRow(c.id)}
+                          style={{ cursor: 'pointer', width: 16, height: 16, verticalAlign: 'middle' }}
+                        />
+                      </td>
                       <td>
                         <div style={{ fontWeight: 600 }}>{c.name}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{c.email}</div>
@@ -288,15 +403,60 @@ export default function ScheduleManagement() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* Inline Info / Edit Form */}
             {isEditing ? (
-              <form onSubmit={handleUpdateCandidate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <Input label="Name" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} required />
-                <Input label="Email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} required />
-                <Input label="Phone" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+               <form onSubmit={handleUpdateCandidate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Input label="Name" id="edit-name" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} required />
+                <Input label="Email" id="edit-email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} required />
+                <Input label="Phone" id="edit-phone" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} required />
                 <Select label="Experience Level" value={editForm.experienceLevel} onChange={e => setEditForm({ ...editForm, experienceLevel: e.target.value })}>
                   <option value="junior">Junior</option>
                   <option value="mid">Mid-Level</option>
                   <option value="senior">Senior</option>
                 </Select>
+
+                {/* Additional Info Fields */}
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 16, marginTop: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0 }}>Additional Details</h4>
+                    <Button type="button" size="xs" variant="secondary" onClick={handleAddInfo}>
+                      + Add Info
+                    </Button>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {editForm.additionalInfo && editForm.additionalInfo.map((info, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'var(--bg-surface-2)', padding: 12, borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <Input
+                            placeholder="Title (e.g. Projects)"
+                            value={info.title}
+                            onChange={e => handleUpdateInfo(idx, 'title', e.target.value)}
+                            style={{ marginBottom: 0 }}
+                          />
+                          <Input
+                            placeholder="Detail description..."
+                            value={info.text}
+                            onChange={e => handleUpdateInfo(idx, 'text', e.target.value)}
+                            style={{ marginBottom: 0 }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveInfo(idx)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--color-danger)',
+                            padding: '6px 4px 0 0'
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
                   <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>Cancel</Button>
                   <Button type="submit" size="sm">Save Changes</Button>
@@ -328,6 +488,21 @@ export default function ScheduleManagement() {
                   <Badge variant="neutral">EXP: {activeCandidate.experienceLevel?.toUpperCase() || 'MID'}</Badge>
                 </div>
 
+                {/* Additional Details Display */}
+                {activeCandidate.additionalInfo && activeCandidate.additionalInfo.length > 0 && (
+                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 12px 0', color: 'var(--text-primary)' }}>Additional Details</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {activeCandidate.additionalInfo.map((info, idx) => (
+                        <div key={idx} style={{ background: 'var(--bg-surface-2)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{info.title}</div>
+                          <div style={{ fontSize: 13, color: 'var(--text-primary)', marginTop: 4 }}>{info.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}><Paperclip size={14} /> Resume File</h4>
@@ -351,12 +526,7 @@ export default function ScheduleManagement() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, borderTop: '1px solid var(--border-color)', paddingTop: 16, marginTop: 12 }}>
-                  {activeCandidate.status === 'assigned' && (
-                    <Button onClick={handleSendInvite} style={{ flex: 1 }} leftIcon={<Send size={14} />}>
-                      Launch Assessment & Invite
-                    </Button>
-                  )}
-                  <Button variant="ghost" style={{ color: 'var(--color-danger)' }} leftIcon={<Trash2 size={14} />} onClick={() => setShowDeleteConfirm(true)}>
+                  <Button variant="ghost" style={{ color: 'var(--color-danger)', width: '100%' }} leftIcon={<Trash2 size={14} />} onClick={() => setShowDeleteConfirm(true)}>
                     Remove Candidate
                   </Button>
                 </div>
@@ -377,15 +547,18 @@ export default function ScheduleManagement() {
         variant="danger"
       />
 
-      {/* Bulk Scheduling Confirmation */}
+
+
+      {/* Bulk Selected Deletion Confirmation */}
       <ConfirmDialog
-        isOpen={showBulkConfirm}
-        onClose={() => setShowBulkConfirm(false)}
-        onConfirm={handleBulkSchedule}
-        title="Launch Bulk AI Assessments"
-        message={`Are you sure you want to trigger overall scheduling and dispatch email interview invitations to all ${assignedCount} assigned candidates at once? Secure test tokens will be automatically created.`}
-        confirmText="Launch All"
-        variant="primary"
+        isOpen={showBulkDeleteConfirm}
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        onConfirm={handleDeleteSelected}
+        loading={deletingSelected}
+        title="Delete Selected Candidates"
+        message={`Are you sure you want to permanently delete the ${selectedIds.length} selected candidate(s)? This action will remove all schedules, resumes, results, and answers associated with them and cannot be undone.`}
+        confirmText="Delete All"
+        variant="danger"
       />
     </div>
   );

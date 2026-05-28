@@ -15,6 +15,7 @@ router.get('/:id', rbac('superadmin', 'admin', 'hr', 'recruiter'), candidatesCon
 router.post('/', rbac('superadmin', 'admin', 'hr'), auditMiddleware('CREATE_CANDIDATE', 'candidates'), candidatesController.create);
 router.put('/:id', rbac('superadmin', 'admin', 'hr', 'recruiter'), auditMiddleware('UPDATE_CANDIDATE', 'candidates'), candidatesController.update);
 router.delete('/:id', rbac('superadmin', 'admin', 'hr'), auditMiddleware('DELETE_CANDIDATE', 'candidates'), candidatesController.remove);
+router.post('/bulk-delete', rbac('superadmin', 'admin', 'hr'), auditMiddleware('DELETE_CANDIDATE_BULK', 'candidates'), candidatesController.bulkDelete);
 
 // Bulk upload
 router.post('/bulk-upload', rbac('hr', 'superadmin', 'admin'), uploadMiddleware.single('csv'), candidatesController.bulkUpload);

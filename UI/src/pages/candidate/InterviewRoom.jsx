@@ -24,7 +24,7 @@ const PHASE = {
 };
 
 const SECTIONS = [
-  { id: 'aptitude', name: 'Section 1: Aptitude MCQ', duration: 15 },
+  { id: 'aptitude', name: 'Section 1: Aptitude Round', duration: 15 },
   { id: 'technical', name: 'Section 2: Technical Assessment', duration: 20 },
   { id: 'coding', name: 'Section 3: Coding Lab', duration: 25 }
 ];
@@ -139,6 +139,15 @@ export default function InterviewRoom() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
+
+  const setVideoRef = (el) => {
+    videoRef.current = el;
+    if (el && streamRef.current) {
+      if (el.srcObject !== streamRef.current) {
+        el.srcObject = streamRef.current;
+      }
+    }
+  };
 
   // Initialize
   useEffect(() => {
@@ -499,6 +508,13 @@ export default function InterviewRoom() {
     return () => {
       stopSpeechRecognition();
     };
+  }, [phase]);
+
+  // Auto-initialize webcam stream if not already active in Face Registration
+  useEffect(() => {
+    if (phase === PHASE.FACE_REG && !streamRef.current) {
+      startWebcam();
+    }
   }, [phase]);
 
   // Sync transcription history refs when active question index changes
@@ -885,87 +901,89 @@ export default function InterviewRoom() {
       <div style={{ fontFamily: "'Inter', system-ui, sans-serif" }} className="h-screen w-screen flex overflow-hidden">
 
         {/* LEFT SIDEBAR */}
-        <aside className="w-[220px] shrink-0 flex flex-col h-screen select-none" style={{ background: '#0F172A', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ padding: '28px 22px 20px' }} className="flex items-center gap-3">
-            <div style={{ width: 40, height: 40, background: '#3B82F6', borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(59,130,246,0.35)' }}>
-              <QrCode style={{ width: 20, height: 20, color: '#fff' }} />
+        <aside className="w-[240px] shrink-0 flex flex-col h-screen select-none bg-[#0B0F19] border-r border-white/[0.06]">
+          <div className="p-6 flex items-center gap-3 border-b border-white/[0.04]">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <QrCode className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p style={{ fontSize: 16, fontWeight: 700, color: '#F1F5F9', letterSpacing: '-0.3px', lineHeight: 1 }}>AgnoHire</p>
-              <p style={{ fontSize: 9, color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.18em', marginTop: 5 }}>Interview Platform</p>
+              <p className="text-[15px] font-bold text-white tracking-tight leading-none">AgnoHire</p>
+              <p className="text-[8px] text-[#94a3b8] font-bold uppercase tracking-[0.2em] mt-1.5 opacity-65">Secure Onboarding</p>
             </div>
           </div>
 
-          <nav style={{ flex: 1, padding: '4px 10px', overflowY: 'auto' }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 10, paddingLeft: 8 }}>Setup Checklist</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <nav className="flex-grow p-4 overflow-y-auto space-y-4">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em] mb-3 px-2">Setup Checklist</p>
+            <div className="flex flex-col gap-1.5">
               {setupSteps.map((step, idx) => {
                 const isActive    = phase === step.phaseKey;
                 const isCompleted = currentStepIdx > idx;
                 const StepIcon = idx === 0 ? Shield : idx === 1 ? SlidersHorizontal : idx === 2 ? Eye : ClipboardList;
                 return (
-                  <div key={step.phaseKey} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 10px', borderRadius: 10, background: isActive ? 'rgba(59,130,246,0.12)' : 'transparent', border: isActive ? '1px solid rgba(59,130,246,0.22)' : '1px solid transparent' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, fontFamily: 'monospace', background: isCompleted ? '#10B981' : isActive ? 'rgba(148,163,184,0.2)' : 'transparent', border: isCompleted ? 'none' : isActive ? 'none' : '1.5px solid rgba(255,255,255,0.16)', color: isCompleted ? '#fff' : isActive ? '#CBD5E1' : '#475569' }}>
-                      {isCompleted ? <Check style={{ width: 13, height: 13 }} /> : step.num}
+                  <div key={step.phaseKey} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 border ${
+                    isActive 
+                      ? 'bg-blue-600/10 border-blue-500/30 text-white shadow-inner' 
+                      : 'bg-transparent border-transparent text-slate-500'
+                  }`}>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold font-mono transition-all ${
+                      isCompleted 
+                        ? 'bg-emerald-500 text-white' 
+                        : isActive 
+                        ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' 
+                        : 'bg-slate-800/40 border border-slate-800/80 text-slate-500'
+                    }`}>
+                      {isCompleted ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : step.num}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 12, fontWeight: 600, color: isActive ? '#F1F5F9' : isCompleted ? '#94A3B8' : '#475569', lineHeight: 1.3, marginBottom: 2 }}>{step.title}</p>
-                      <p style={{ fontSize: 10, color: isActive ? '#60A5FA' : isCompleted ? 'rgba(52,211,153,0.5)' : '#334155' }}>{step.desc}</p>
+                    <div className="flex-grow min-w-0">
+                      <p className={`text-[12px] font-bold leading-tight ${isActive ? 'text-white' : isCompleted ? 'text-slate-400' : 'text-slate-650'}`}>{step.title}</p>
+                      <p className={`text-[9px] mt-0.5 ${isActive ? 'text-blue-400' : isCompleted ? 'text-emerald-500/80' : 'text-slate-700'}`}>{step.desc}</p>
                     </div>
-                    <StepIcon style={{ width: 15, height: 15, flexShrink: 0, color: isActive ? '#60A5FA' : '#1E293B' }} />
+                    <StepIcon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-blue-400' : 'text-slate-800'}`} />
                   </div>
                 );
               })}
             </div>
           </nav>
 
-          <div style={{ padding: '14px 18px 18px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.16)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CircleUserRound style={{ width: 20, height: 20, color: '#94A3B8' }} />
+          <div className="p-5 border-t border-white/[0.04] bg-slate-950/20">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-blue-600/10 border border-blue-500/20 flex-shrink-0 flex items-center justify-center">
+                <CircleUserRound className="w-5 h-5 text-blue-400" />
               </div>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#F1F5F9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1 }}>{schedule?.interview?.candidate?.name || '—'}</p>
-                <p style={{ fontSize: 10, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 4 }}>{schedule?.interview?.candidate?.email || '—'}</p>
+              <div className="min-w-0 flex-grow">
+                <p className="text-xs font-bold text-white truncate leading-none">{schedule?.interview?.candidate?.name || '—'}</p>
+                <p className="text-[10px] text-slate-400 truncate mt-1">{schedule?.interview?.candidate?.email || '—'}</p>
               </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {[
-                { label: 'Recruiter ID',  value: recruiterId ? `${recruiterId.slice(0, 10)}...` : 'N/A' },
-                { label: 'Session Token', value: token       ? `${token.slice(0, 10)}...`        : 'N/A' },
-              ].map(item => (
-                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#334155' }}>{item.label}</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#60A5FA' }}>{item.value}</span>
-                </div>
-              ))}
             </div>
           </div>
         </aside>
 
         {/* RIGHT PANEL */}
-        <div className="flex-1 flex flex-col h-screen overflow-hidden" style={{ background: '#0D1117' }}>
+        <div className="flex-1 flex flex-col h-screen overflow-hidden bg-[#060814] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0b1224] via-[#060814] to-[#060814]">
 
-          <header style={{ height: 56, padding: '0 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <header className="h-[72px] px-8 flex items-center justify-between border-b border-white/[0.05] flex-shrink-0 bg-slate-950/20 backdrop-blur-md">
             <div>
-              <p style={{ fontSize: 10, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.18em', lineHeight: 1, marginBottom: 5 }}>{setupSteps[currentStepIdx]?.desc}</p>
-              <p style={{ fontSize: 17, fontWeight: 700, color: '#F1F5F9', lineHeight: 1 }}>{setupSteps[currentStepIdx]?.title}</p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.18em] leading-none mb-1.5">{setupSteps[currentStepIdx]?.desc}</p>
+              <p className="text-lg font-bold text-white leading-none">{setupSteps[currentStepIdx]?.title}</p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ display: 'flex', gap: 5 }}>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1.5">
                   {setupSteps.map((_, idx) => (
-                    <div key={idx} style={{ height: 3, width: idx === currentStepIdx ? 28 : 20, borderRadius: 99, background: idx < currentStepIdx ? '#10B981' : idx === currentStepIdx ? '#3B82F6' : 'rgba(255,255,255,0.1)', transition: 'all 0.3s' }} />
+                    <div key={idx} className={`h-1 rounded-full transition-all duration-300 ${
+                      idx < currentStepIdx ? 'w-5 bg-emerald-500' : idx === currentStepIdx ? 'w-7 bg-blue-500' : 'w-4 bg-white/10'
+                    }`} />
                   ))}
                 </div>
-                <span style={{ fontSize: 12, color: '#64748B', fontWeight: 500 }}>{currentStepIdx + 1} / 4</span>
+                <span className="text-xs text-slate-500 font-bold font-mono">{currentStepIdx + 1} / 4</span>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(255,255,255,0.09)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748B' }}><Bell style={{ width: 16, height: 16 }} /></button>
-                <button style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(255,255,255,0.09)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748B' }}><HelpCircle style={{ width: 16, height: 16 }} /></button>
+              <div className="flex gap-2">
+                <button className="w-8 h-8 rounded-lg border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.06] flex items-center justify-center cursor-pointer text-slate-400 hover:text-white transition-colors"><Bell className="w-4 h-4" /></button>
+                <button className="w-8 h-8 rounded-lg border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.06] flex items-center justify-center cursor-pointer text-slate-400 hover:text-white transition-colors"><HelpCircle className="w-4 h-4" /></button>
               </div>
             </div>
           </header>
+
 
           <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflowY: 'auto', padding: '24px' }}>
             <div style={{ width: '100%', maxWidth: 560 }}>
@@ -973,62 +991,62 @@ export default function InterviewRoom() {
 
                 {phase === PHASE.VERIFY && (
                   <motion.div key="verify" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
-                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
-                      <div style={{ padding: '26px 26px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
-                          <div style={{ width: 48, height: 48, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Shield style={{ width: 24, height: 24, color: '#93C5FD' }} />
+                    <div className="bg-[#0B0F19]/80 backdrop-blur-xl border border-white/[0.06] rounded-2xl overflow-hidden shadow-2xl">
+                      <div className="p-8">
+                        <div className="flex items-start gap-4 mb-6">
+                          <div className="w-12 h-12 bg-blue-600/10 border border-blue-500/20 rounded-xl flex-shrink-0 flex items-center justify-center animate-pulse">
+                            <Shield className="w-6 h-6 text-blue-400" />
                           </div>
                           <div>
-                            <h2 style={{ fontSize: 21, fontWeight: 700, color: '#F1F5F9', lineHeight: 1.2, marginBottom: 6 }}>Identity Verification</h2>
-                            <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>Confirm your profile and request your one-time passcode to begin the interview process.</p>
+                            <h2 className="text-xl font-bold text-white tracking-tight mb-1.5">Identity Verification</h2>
+                            <p className="text-slate-400 text-xs leading-relaxed">Confirm your profile and request your one-time passcode to begin the secure interview.</p>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10 }}>
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#3B82F6', flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, color: '#94A3B8' }}>Applied for: <strong style={{ color: '#60A5FA' }}>{schedule?.interview?.candidate?.domain?.name || 'Software Engineer'}</strong></span>
-                          <span style={{ color: 'rgba(255,255,255,0.14)', fontSize: 16 }}>|</span>
-                          <span style={{ fontSize: 13, color: '#64748B' }}>Recruiter: {schedule?.interview?.recruiter?.name || 'Frontend Team'}</span>
+                        <div className="flex items-center gap-3 px-4 py-3 bg-white/[0.02] border border-white/[0.06] rounded-xl text-xs">
+                          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+                          <span className="text-slate-350">Applied for: <strong className="text-blue-400 font-semibold">{schedule?.interview?.candidate?.domain?.name || 'Software Engineer'}</strong></span>
+                          <span className="text-white/10">|</span>
+                          <span className="text-slate-400">Recruiter: {schedule?.interview?.recruiter?.name || 'AgnoHire Recruiter'}</span>
                         </div>
                       </div>
-                      <div style={{ padding: '0 26px 26px' }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.16em', marginBottom: 10 }}>Registered Profile Data</p>
-                        <div style={{ background: '#0A1520', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+                      <div className="px-8 pb-8">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Registered Profile Data</p>
+                        <div className="bg-slate-950/40 border border-white/[0.04] rounded-xl overflow-hidden mb-6">
                           {[
                             { label: 'Full Name',     value: schedule?.interview?.candidate?.name, mono: false },
                             { label: 'Email Address', value: schedule?.interview?.candidate?.email, mono: false },
                             { label: 'Candidate ID',  value: schedule?.interview?.candidateId,      mono: true  },
                           ].map((field, i, arr) => (
-                            <div key={field.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 18px', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{field.label}</span>
-                              <span style={{ fontSize: field.mono ? 11 : 13, fontWeight: 600, color: '#E2E8F0', fontFamily: field.mono ? 'monospace' : 'inherit' }}>{field.value || '—'}</span>
+                            <div key={field.label} className={`flex items-center justify-between px-5 py-3 text-xs ${i < arr.length - 1 ? 'border-b border-white/[0.04]' : ''}`}>
+                              <span className="font-semibold text-slate-500 uppercase tracking-wider text-[9px]">{field.label}</span>
+                              <span className={`font-semibold text-slate-200 ${field.mono ? 'font-mono text-[10px] text-blue-400' : ''}`}>{field.value || '—'}</span>
                             </div>
                           ))}
                         </div>
                         {!otpSent ? (
-                          <button onClick={handleSendOtp} style={{ width: '100%', height: 50, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 6px 20px rgba(59,130,246,0.3)' }}>
-                            Send Verification Code <ChevronRight style={{ width: 18, height: 18 }} />
+                          <button onClick={handleSendOtp} className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all active:scale-98">
+                            Send Verification Code <ChevronRight className="w-4 h-4" />
                           </button>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div className="flex flex-col gap-4">
                             <div>
-                              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 8 }}>6-Digit Verification Code</label>
-                              <input type="text" maxLength={6} placeholder="• • • • • •" value={otpCode} onChange={e => setOtpCode(e.target.value)} style={{ width: '100%', textAlign: 'center', letterSpacing: '14px', fontSize: 22, fontWeight: 700, fontFamily: 'monospace', background: '#0A1520', border: '2px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '14px 0', color: '#F1F5F9', outline: 'none', boxSizing: 'border-box' }} />
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5">6-Digit Verification Code</label>
+                              <input type="text" maxLength={6} placeholder="• • • • • •" value={otpCode} onChange={e => setOtpCode(e.target.value)} className="w-full text-center tracking-[12px] text-xl font-bold font-mono bg-slate-950/60 border border-white/[0.08] focus:border-blue-500/60 rounded-xl py-3.5 text-white outline-none transition-all" />
                             </div>
                             {devOtp && (
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10 }}>
-                                <span style={{ fontSize: 12, color: '#FCD34D' }}>🧪 Dev Mode OTP</span>
-                                <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#FDE68A', letterSpacing: '4px' }}>{devOtp}</span>
+                              <div className="flex justify-between items-center px-4 py-2.5 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs">
+                                <span className="text-amber-400 font-medium">🧪 Dev Mode OTP</span>
+                                <span className="font-mono font-bold text-amber-300 letter-spacing-[3px]">{devOtp}</span>
                               </div>
                             )}
-                            <button onClick={handleVerifyOtp} disabled={otpVerifying} style={{ width: '100%', height: 50, background: '#059669', border: 'none', borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: otpVerifying ? 0.6 : 1 }}>
-                              {otpVerifying ? 'Verifying…' : 'Verify & Continue'} {!otpVerifying && <ChevronRight style={{ width: 16, height: 16 }} />}
+                            <button onClick={handleVerifyOtp} disabled={otpVerifying} className="w-full h-11 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all active:scale-98 disabled:opacity-50">
+                              {otpVerifying ? 'Verifying…' : 'Verify & Continue'} {!otpVerifying && <ChevronRight className="w-4 h-4" />}
                             </button>
                           </div>
                         )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
-                          <Lock style={{ width: 12, height: 12, color: '#334155', flexShrink: 0 }} />
-                          <span style={{ fontSize: 11, color: '#334155' }}>Session secured with 256-bit TLS encryption and real-time biometric proctoring.</span>
+                        <div className="flex items-center gap-2 mt-4 text-[10px] text-slate-500">
+                          <Lock className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
+                          <span>Session secured with 256-bit TLS encryption and real-time proctoring.</span>
                         </div>
                       </div>
                     </div>
@@ -1036,64 +1054,68 @@ export default function InterviewRoom() {
                 )}
 
                 {phase === PHASE.ENV_CHECK && (
-                  <motion.div key="env" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-3">
-                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '22px 26px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div style={{ width: 48, height: 48, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Monitor style={{ width: 24, height: 24, color: '#A78BFA' }} />
+                  <motion.div key="env" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-4">
+                    <div className="bg-[#0B0F19]/80 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 flex items-center gap-4 shadow-2xl">
+                      <div className="w-12 h-12 bg-indigo-600/10 border border-indigo-500/20 rounded-xl flex-shrink-0 flex items-center justify-center animate-pulse">
+                        <Monitor className="w-6 h-6 text-indigo-400" />
                       </div>
                       <div>
-                        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>System Compatibility</h2>
-                        <p style={{ fontSize: 13, color: '#64748B' }}>Complete all checks before proceeding to biometric enrollment</p>
+                        <h2 className="text-xl font-bold text-white tracking-tight">System Compatibility</h2>
+                        <p className="text-slate-400 text-xs">Verify your devices and connection parameters before biometric enrollment.</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div style={{ background: '#080D17', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 260 }}>
-                        <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: webcamOn ? '#34D399' : '#334155' }} />
-                          <span style={{ fontSize: 11, color: '#64748B', fontWeight: 500 }}>{webcamOn ? 'Camera Active' : 'Camera Inactive'}</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-[#080D17]/90 border border-white/[0.06] rounded-2xl overflow-hidden flex flex-col min-h-[280px]">
+                        <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${webcamOn ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{webcamOn ? 'Camera Active' : 'Camera Inactive'}</span>
+                          </div>
                         </div>
-                        <div style={{ flex: 1, position: 'relative', minHeight: 130 }}>
+                        <div className="flex-1 relative bg-slate-950/40">
                           {webcamOn
-                            ? <video ref={videoRef} autoPlay muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-                            : <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                                <Camera style={{ width: 26, height: 26, color: '#334155' }} />
-                                <p style={{ fontSize: 11, color: '#334155', textAlign: 'center', padding: '0 16px' }}>Allow camera and microphone access</p>
+                            ? <video ref={setVideoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover scale-x-[-1] rounded-b-xl" />
+                            : <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                <Camera className="w-8 h-8 text-slate-700" />
+                                <p className="text-[11px] text-slate-500 text-center px-6">Allow browser webcam and microphone access</p>
                               </div>
                           }
                         </div>
-                        <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                          <button onClick={startWebcam} style={{ width: '100%', height: 32, background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 8, color: '#94A3B8', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                            <Camera style={{ width: 13, height: 13, color: '#60A5FA' }} />
-                            {webcamOn ? 'Restart Camera' : 'Enable Camera & Mic'}
+                        <div className="p-3 bg-slate-950/20 border-t border-white/[0.04]">
+                          <button onClick={startWebcam} className="w-full h-9 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] rounded-xl text-slate-200 hover:text-white text-xs font-semibold cursor-pointer flex items-center justify-center gap-1.5 transition-all">
+                            <Camera className="w-4 h-4 text-blue-400" />
+                            {webcamOn ? 'Restart Device Feed' : 'Enable Camera & Mic'}
                           </button>
                         </div>
                       </div>
-                      <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column' }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Requirements</p>
-                        <div style={{ flex: 1 }}>
-                          {[
-                            { icon: Monitor, label: 'Fullscreen',   ok: envStates.fullscreen,             action: !envStates.fullscreen ? <button onClick={requestFullscreenMode} style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#3B82F6', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Enable</button> : null },
-                            { icon: Volume2, label: 'Speaker',      ok: envStates.speaker,                action: !envStates.speaker ? <button onClick={playTestSound} disabled={isSpeakerPlaying} style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#3B82F6', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', opacity: isSpeakerPlaying ? 0.5 : 1 }}>{isSpeakerPlaying ? '…' : 'Test'}</button> : null },
-                            { icon: Wifi,    label: 'Network',      ok: envStates.internet === 'success', action: envStates.internet !== 'success' ? <button onClick={runSpeedTest} style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: '#3B82F6', border: 'none', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>{envStates.internet === 'running' ? '…' : 'Test'}</button> : null },
-                            { icon: Battery, label: 'Battery',      ok: envStates.battery > 20,           badge: `${envStates.battery}%`, action: null },
-                            { icon: Camera,  label: 'Camera & Mic', ok: envStates.camera && envStates.mic, action: null },
-                          ].map((check, idx) => (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: idx < 4 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ width: 26, height: 26, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: check.ok ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)', border: check.ok ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.06)' }}>
-                                  <check.icon style={{ width: 12, height: 12, color: check.ok ? '#34D399' : '#475569' }} />
+                      <div className="bg-[#0B0F19]/80 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-5 flex flex-col justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Compatibility Matrix</p>
+                          <div className="space-y-1.5">
+                            {[
+                              { icon: Monitor, label: 'Fullscreen Mode',   ok: envStates.fullscreen,             action: !envStates.fullscreen ? <button onClick={requestFullscreenMode} className="text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg px-2.5 py-1 cursor-pointer transition-colors shadow-md shadow-blue-500/10">Enable</button> : null },
+                              { icon: Volume2, label: 'Speaker System',      ok: envStates.speaker,                action: !envStates.speaker ? <button onClick={playTestSound} disabled={isSpeakerPlaying} className="text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg px-2.5 py-1 cursor-pointer transition-colors shadow-md shadow-blue-500/10 disabled:opacity-50">{isSpeakerPlaying ? '…' : 'Test Sound'}</button> : null },
+                              { icon: Wifi,    label: 'Connection Latency',  ok: envStates.internet === 'success', action: envStates.internet !== 'success' ? <button onClick={runSpeedTest} className="text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg px-2.5 py-1 cursor-pointer transition-colors shadow-md shadow-blue-500/10">{envStates.internet === 'running' ? '…' : 'Test Speed'}</button> : null },
+                              { icon: Battery, label: 'Device Charge',      ok: envStates.battery > 20,           badge: `${envStates.battery}%`, action: null },
+                              { icon: Camera,  label: 'Webcam Stream',      ok: envStates.camera && envStates.mic, action: null },
+                            ].map((check, idx) => (
+                              <div key={idx} className={`flex items-center justify-between py-2 ${idx < 4 ? 'border-b border-white/[0.03]' : ''}`}>
+                                <div className="flex items-center gap-2.5">
+                                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${check.ok ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-white/[0.02] border border-white/[0.04] text-slate-500'}`}>
+                                    <check.icon className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span className="text-xs text-slate-350">{check.label}</span>
                                 </div>
-                                <span style={{ fontSize: 12, color: '#94A3B8' }}>{check.label}</span>
+                                {check.ok
+                                  ? <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-2 py-0.5 font-mono">PASS</span>
+                                  : check.action ? check.action : <span className="text-[10px] text-slate-600 font-mono">—</span>}
                               </div>
-                              {check.ok
-                                ? <span style={{ fontSize: 11, fontWeight: 600, color: '#34D399', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 5, padding: '2px 7px' }}>{check.badge || 'Pass'}</span>
-                                : check.action ? check.action : <span style={{ fontSize: 11, color: '#334155' }}>—</span>}
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
                         <button disabled={!(envStates.fullscreen && envStates.camera && envStates.mic && envStates.speaker && envStates.internet === 'success')} onClick={() => setPhase(PHASE.FACE_REG)}
-                          style={{ marginTop: 12, width: '100%', height: 38, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: (envStates.fullscreen && envStates.camera && envStates.mic && envStates.speaker && envStates.internet === 'success') ? 1 : 0.3 }}>
-                          Continue <ChevronRight style={{ width: 14, height: 14 }} />
+                          className="mt-4 w-full h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 text-white disabled:text-slate-500 rounded-xl text-sm font-semibold cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-blue-500/20 disabled:shadow-none active:scale-98">
+                          Continue to Biometrics <ChevronRight className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1102,61 +1124,61 @@ export default function InterviewRoom() {
 
                 {phase === PHASE.FACE_REG && (
                   <motion.div key="face" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
-                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
-                      <div style={{ padding: '22px 26px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <div style={{ width: 48, height: 48, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Eye style={{ width: 24, height: 24, color: '#34D399' }} />
+                    <div className="bg-[#0B0F19]/80 backdrop-blur-xl border border-white/[0.06] rounded-2xl overflow-hidden shadow-2xl">
+                      <div className="px-8 py-5 border-b border-white/[0.04] flex items-center gap-4 bg-slate-950/20">
+                        <div className="w-12 h-12 bg-emerald-600/10 border border-emerald-500/20 rounded-xl flex-shrink-0 flex items-center justify-center animate-pulse">
+                          <Eye className="w-6 h-6 text-emerald-400" />
                         </div>
                         <div>
-                          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>Biometric Enrollment</h2>
-                          <p style={{ fontSize: 13, color: '#64748B' }}>Position your face in the frame and capture your profile</p>
+                          <h2 className="text-xl font-bold text-white tracking-tight">Biometric Enrollment</h2>
+                          <p className="text-slate-405 text-xs">Position your face within the safety boundaries and record your profile.</p>
                         </div>
                       </div>
-                      <div style={{ padding: '22px 26px' }}>
-                        <div style={{ background: '#080D17', borderRadius: 14, overflow: 'hidden', position: 'relative', aspectRatio: '16/9', marginBottom: 16 }}>
+                      <div className="p-8">
+                        <div className="bg-[#080D17]/95 border border-white/[0.06] rounded-2xl overflow-hidden relative aspect-[16/9] mb-6 shadow-inner flex items-center justify-center bg-black">
                           {faceDataUrl
-                            ? <img src={faceDataUrl} alt="Captured" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-                            : <video ref={videoRef} autoPlay muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />}
+                            ? <img src={faceDataUrl} alt="Captured" className="absolute inset-0 w-full h-full object-cover scale-x-[-1] rounded-2xl" />
+                            : <video ref={setVideoRef} autoPlay muted className="absolute inset-0 w-full h-full object-cover scale-x-[-1] rounded-2xl" />}
                           {!faceRegistered && !faceScanning && (
-                            <div style={{ position: 'absolute', inset: 24, border: '1.5px dashed rgba(59,130,246,0.3)', borderRadius: 12, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 12 }}>
-                              <span style={{ fontSize: 10, color: '#60A5FA', background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: 20, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Center Your Face</span>
+                            <div className="absolute inset-6 border border-dashed border-blue-500/30 rounded-xl flex items-end justify-center pb-4">
+                              <span className="text-[10px] text-blue-400 bg-slate-950/70 border border-blue-500/30 px-3.5 py-1.5 rounded-full font-bold uppercase tracking-wider font-mono backdrop-blur-md shadow-md animate-pulse">Center Your Face</span>
                             </div>
                           )}
                           {faceRegistered && (
-                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(16,185,129,0.08)', border: '2px solid rgba(52,211,153,0.3)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,0.5)', padding: '9px 16px', borderRadius: 10, backdropFilter: 'blur(8px)' }}>
-                                <CheckCircle style={{ width: 16, height: 16, color: '#34D399' }} />
-                                <span style={{ fontSize: 13, fontWeight: 700, color: '#6EE7B7' }}>Face Enrolled</span>
+                            <div className="absolute inset-0 bg-emerald-500/5 border border-emerald-500/25 rounded-2xl flex items-center justify-center">
+                              <div className="flex items-center gap-2.5 bg-slate-950/60 border border-emerald-500/30 px-5 py-2.5 rounded-xl backdrop-blur-md shadow-xl">
+                                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                <span className="text-xs font-bold text-emerald-300 uppercase tracking-widest font-mono">Face Profile Saved</span>
                               </div>
                             </div>
                           )}
                         </div>
                         {!faceRegistered ? (
                           <button onClick={captureFaceBiometrics} disabled={faceScanning}
-                            style={{ width: '100%', height: 50, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: faceScanning ? 0.6 : 1 }}>
-                            <Camera style={{ width: 18, height: 18 }} />
-                            {faceScanning ? 'Capturing…' : 'Capture Facial Profile'}
+                            className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all active:scale-98 disabled:opacity-60">
+                            <Camera className="w-4 h-4" />
+                            {faceScanning ? 'Capturing Biometric Vectors…' : 'Capture Facial Profile'}
                           </button>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', borderRadius: 10 }}>
-                              <CheckCircle style={{ width: 18, height: 18, color: '#34D399', flexShrink: 0 }} />
+                          <div className="flex flex-col gap-4">
+                            <div className="flex items-center gap-3 px-5 py-3.5 bg-emerald-500/5 border border-emerald-500/20 rounded-xl shadow-inner">
+                              <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                               <div>
-                                <p style={{ fontSize: 13, fontWeight: 700, color: '#6EE7B7' }}>Enrollment Successful</p>
-                                <p style={{ fontSize: 11, color: 'rgba(52,211,153,0.6)' }}>Biometric reference frames saved securely</p>
+                                <p className="text-xs font-bold text-emerald-300">Enrollment Completed</p>
+                                <p className="text-[10px] text-emerald-500/70 mt-0.5">Biometric verification vector keys generated successfully.</p>
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <button onClick={() => { setFaceRegistered(false); setFaceDataUrl(''); startWebcam(); }} style={{ flex: 1, height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: '#94A3B8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Retake</button>
-                              <button onClick={() => setPhase(PHASE.INSTRUCTIONS)} style={{ flex: 2, height: 40, background: '#3B82F6', border: 'none', borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                                Proceed to Briefing <ChevronRight style={{ width: 13, height: 13 }} />
+                            <div className="flex gap-3">
+                              <button onClick={() => { setFaceRegistered(false); setFaceDataUrl(''); startWebcam(); }} className="flex-1 h-11 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] rounded-xl text-slate-300 hover:text-white text-xs font-semibold cursor-pointer transition-all active:scale-98">Retake Profile</button>
+                              <button onClick={() => setPhase(PHASE.INSTRUCTIONS)} className="flex-[2] h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-blue-500/20 active:scale-98">
+                                Proceed to Briefing <ChevronRight className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
                         )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
-                          <Lock style={{ width: 12, height: 12, color: '#334155', flexShrink: 0 }} />
-                          <span style={{ fontSize: 11, color: '#334155' }}>Facial data is encrypted and stored only for this session.</span>
+                        <div className="flex items-center gap-2 mt-4 text-[10px] text-slate-500">
+                          <Lock className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
+                          <span>All biometric datasets are strictly tokenized and encrypted in memory.</span>
                         </div>
                       </div>
                     </div>
@@ -1164,53 +1186,53 @@ export default function InterviewRoom() {
                 )}
 
                 {phase === PHASE.INSTRUCTIONS && (
-                  <motion.div key="instructions" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-3">
-                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '22px 26px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div style={{ width: 48, height: 48, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <FileCode style={{ width: 24, height: 24, color: '#FCD34D' }} />
+                  <motion.div key="instructions" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }} className="space-y-4">
+                    <div className="bg-[#0B0F19]/80 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 flex items-center gap-4 shadow-2xl">
+                      <div className="w-12 h-12 bg-amber-600/10 border border-amber-500/20 rounded-xl flex-shrink-0 flex items-center justify-center animate-pulse">
+                        <FileCode className="w-6 h-6 text-amber-400" />
                       </div>
                       <div>
-                        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>Assessment Briefing</h2>
-                        <p style={{ fontSize: 13, color: '#64748B' }}>Review all rules and provide your acknowledgement to proceed</p>
+                        <h2 className="text-xl font-bold text-white tracking-tight">Assessment Briefing</h2>
+                        <p className="text-slate-400 text-xs">Review session instructions and proctoring boundaries to initialize the room.</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-3">
-                      {[{ label: 'Modules', value: '3 Sections' }, { label: 'Duration', value: '60 Minutes' }, { label: 'Domain', value: schedule?.interview?.candidate?.domain?.name || 'General' }].map((s, i) => (
-                        <div key={i} style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '14px', textAlign: 'center' }}>
-                          <p style={{ fontSize: 15, fontWeight: 700, color: '#F1F5F9', lineHeight: 1, marginBottom: 5 }}>{s.value}</p>
-                          <p style={{ fontSize: 11, color: '#475569' }}>{s.label}</p>
+                      {[{ label: 'Modules', value: '3 Sections' }, { label: 'Exam Duration', value: '60 Minutes' }, { label: 'Assigned Domain', value: schedule?.interview?.candidate?.domain?.name || 'General' }].map((s, i) => (
+                        <div key={i} className="bg-[#0B0F19]/60 border border-white/[0.04] rounded-xl p-4 text-center">
+                          <p className="text-sm font-bold text-white font-mono">{s.value}</p>
+                          <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider font-semibold">{s.label}</p>
                         </div>
                       ))}
                     </div>
-                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
-                      <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Proctoring Rules & Regulations</p>
+                    <div className="bg-[#0B0F19]/80 backdrop-blur-xl border border-white/[0.06] rounded-2xl overflow-hidden shadow-2xl">
+                      <div className="px-5 py-3 border-b border-white/[0.04] bg-slate-950/20">
+                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Active Proctoring Protocols</p>
                       </div>
                       {[
-                        { icon: Shield,  title: 'Continuous Webcam Monitoring', desc: 'Biometric face verification remains active throughout your session.',          color: '#60A5FA', bg: 'rgba(59,130,246,0.1)',  bd: 'rgba(59,130,246,0.2)'  },
-                        { icon: Monitor, title: 'Fullscreen Enforcement',        desc: 'Exiting fullscreen mode will immediately trigger a proctoring infraction.',  color: '#A78BFA', bg: 'rgba(139,92,246,0.1)',  bd: 'rgba(139,92,246,0.2)'  },
-                        { icon: Lock,    title: 'Clipboard Restrictions',        desc: 'Copy, paste, and right-click operations are disabled during the assessment.', color: '#FCD34D', bg: 'rgba(245,158,11,0.1)',  bd: 'rgba(245,158,11,0.2)'  },
-                        { icon: Clock,   title: 'Auto-Submit on Timeout',        desc: 'Your answers are automatically submitted when the session timer expires.',    color: '#F87171', bg: 'rgba(239,68,68,0.1)',   bd: 'rgba(239,68,68,0.2)'   },
+                        { icon: Shield,  title: 'Continuous Face Verification', desc: 'Biometric scanners track facial frames continuously. Do not exit webcam view.',          color: '#60A5FA', bg: 'rgba(59,130,246,0.06)',  bd: 'rgba(59,130,246,0.15)'  },
+                        { icon: Monitor, title: 'Locked Viewport Constraints',        desc: 'Exiting fullscreen view or switching browser tabs logs immediate warnings.',  color: '#A78BFA', bg: 'rgba(139,92,246,0.06)',  bd: 'rgba(139,92,246,0.15)'  },
+                        { icon: Lock,    title: 'Clipboard Lock Active',        desc: 'Right-click menu, clipboard copy/paste, and code extraction keys are restricted.', color: '#FCD34D', bg: 'rgba(245,158,11,0.06)',  bd: 'rgba(245,158,11,0.15)'  },
+                        { icon: Clock,   title: 'Autonomous Exam Submission',        desc: 'Assessment triggers zero-delay automatic submission once the global timer expires.',    color: '#F87171', bg: 'rgba(239,68,68,0.06)',   bd: 'rgba(239,68,68,0.15)'   },
                       ].map((rule, idx, arr) => (
-                        <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '13px 20px', borderBottom: idx < arr.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                          <div style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${rule.bd}`, background: rule.bg, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <rule.icon style={{ width: 15, height: 15, color: rule.color }} />
+                        <div key={idx} className={`flex items-start gap-4.5 p-4.5 ${idx < arr.length - 1 ? 'border-b border-white/[0.03]' : ''}`}>
+                          <div className="w-9 h-9 rounded-lg border flex-shrink-0 flex items-center justify-center" style={{ borderColor: rule.bd, background: rule.bg }}>
+                            <rule.icon className="w-4 h-4" style={{ color: rule.color }} />
                           </div>
                           <div>
-                            <p style={{ fontSize: 13, fontWeight: 600, color: '#CBD5E1', marginBottom: 3 }}>{rule.title}</p>
-                            <p style={{ fontSize: 11, color: '#475569', lineHeight: 1.5 }}>{rule.desc}</p>
+                            <p className="text-xs font-bold text-slate-200">{rule.title}</p>
+                            <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">{rule.desc}</p>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <div style={{ background: '#131D2E', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={rulesAgreed} onChange={e => setRulesAgreed(e.target.checked)} style={{ marginTop: 2, width: 15, height: 15, accentColor: '#3B82F6', cursor: 'pointer' }} />
-                        <span style={{ fontSize: 13, color: '#64748B', lineHeight: 1.6 }}>I acknowledge and consent to biometric recording, fullscreen monitoring, and all proctoring rules stated above for this assessment session.</span>
+                    <div className="bg-[#0B0F19]/80 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-5 flex flex-col gap-4">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" checked={rulesAgreed} onChange={e => setRulesAgreed(e.target.checked)} className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer" />
+                        <span className="text-xs text-slate-400 leading-relaxed">I consent to secure proctoring monitor locks and biometric vector tracking to initialize the session.</span>
                       </label>
                       <button disabled={!rulesAgreed} onClick={startInterviewSession}
-                        style={{ width: '100%', height: 50, background: rulesAgreed ? '#3B82F6' : 'rgba(255,255,255,0.04)', border: 'none', borderRadius: 10, color: rulesAgreed ? '#fff' : '#334155', fontSize: 15, fontWeight: 600, cursor: rulesAgreed ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: rulesAgreed ? '0 6px 20px rgba(59,130,246,0.3)' : 'none' }}>
-                        <Play style={{ width: 16, height: 16 }} /> Launch Assessment
+                        className="w-full h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 text-white disabled:text-slate-500 rounded-xl text-sm font-semibold cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-blue-500/20 disabled:shadow-none active:scale-98">
+                        <Play className="w-4 h-4" /> Launch Assessments Workspace
                       </button>
                     </div>
                   </motion.div>
@@ -1235,33 +1257,21 @@ export default function InterviewRoom() {
   }
 
   return (
-    <div className="dark min-h-screen bg-[#080B12] text-white flex flex-col font-sans selection:bg-blue-500/30 selection:text-white">
+    <div className="dark min-h-screen bg-[#060814] text-white flex flex-col font-sans selection:bg-blue-500/30 selection:text-white">
       {/* Top Banner Navigation */}
-      <header className="h-[106px] px-10 flex items-center justify-between sticky top-0 z-40 bg-[#11141A] border-b border-[#252A35] text-white">
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-[62px] rounded-[18px] bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <span className="text-white font-extrabold text-3xl tracking-tighter">A</span>
-          </div>
-          <div>
-            <h1 className="text-[32px] font-extrabold tracking-tight text-white leading-none">AgnoHire</h1>
-          </div>
-        </div>
-
-        {phase === PHASE.INTERVIEW && (
-          <div className="flex items-center gap-6">
-            <div className="h-[61px] min-w-[348px] border-2 border-blue-600/55 bg-[#111827]/50 px-8 rounded-full flex items-center justify-center gap-4 text-blue-400 font-bold tracking-wider shadow-inner">
-              <span className="text-[#6C86BA] text-lg font-mono uppercase tracking-[0.22em]">Time Remaining</span>
-              <span className="font-mono text-[28px] font-black tracking-normal">
-                {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
-              </span>
+      {phase !== PHASE.INTERVIEW && (
+        <header className="h-[72px] px-8 flex items-center justify-between sticky top-0 z-40 bg-[#0B0F19]/80 backdrop-blur-md border-b border-white/[0.06] text-white">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <QrCode className="w-5 h-5 text-white" />
             </div>
-
-            <button className="w-[63px] h-[61px] border-2 border-[#252A35] bg-[#0E121B] rounded-[16px] flex items-center justify-center hover:bg-slate-800 transition-colors cursor-pointer text-blue-300/80 hover:text-white">
-              <Square className="w-5 h-5" />
-            </button>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-white leading-none">AgnoHire</h1>
+              <p className="text-[9px] text-[#94a3b8] font-bold uppercase tracking-[0.18em] mt-1.5 opacity-60">Secure Interview</p>
+            </div>
           </div>
-        )}
-      </header>
+        </header>
+      )}
 
       {/* Main Container */}
       <main className="flex-grow flex flex-col w-full p-0 max-w-none">
@@ -1270,385 +1280,146 @@ export default function InterviewRoom() {
           {phase === PHASE.INTERVIEW && q && (
             <motion.div
               key="interview"
-              className="relative w-full min-h-[calc(100vh-106px)] bg-[#080B12] text-slate-200 font-sans"
+              className="relative w-full min-h-[calc(100vh-72px)] bg-[#0A0E17] text-slate-200 font-sans flex flex-col justify-between"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              {(() => {
-                // Shared camera widget
-                const renderCandidateCameraCard = () => (
-                  <div className="bg-[#10141C] border-2 border-[#202638] rounded-[24px] shadow-lg flex flex-col overflow-hidden">
-                    {/* Header */}
-                    <div className="h-[78px] px-8 flex items-center justify-between border-b border-[#202638]">
-                      <span className="text-lg font-semibold text-[#6B8BC5] tracking-[0.18em] font-mono flex items-center gap-5">
-                        <Square className="w-3.5 h-3.5 text-blue-300/80" /> Camera (live)
-                      </span>
-                      <span className="text-emerald-400 border-2 border-emerald-500/60 bg-emerald-950/30 px-5 py-2 rounded-lg text-lg font-semibold font-mono">
-                        Active
-                      </span>
+              {/* TOP BAR / NAVIGATION (DARK) */}
+              <div className="bg-[#0A0E17] border-b border-white/[0.08] px-8 py-3 flex items-center justify-between z-35 relative">
+                {/* Left logo & title */}
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                      <QrCode className="w-4.5 h-4.5 text-white" />
                     </div>
+                    <span className="text-[17px] font-bold text-white tracking-tight">AgnoHire</span>
+                  </div>
+                  <div className="h-4 w-[1px] bg-white/15" />
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-semibold text-slate-200">{schedule?.interview?.candidate?.domain?.name || 'Frontend Developer Interview'}</span>
+                    <span className="text-white/20">|</span>
+                    <span className="text-blue-400 font-medium">{getActiveSectionName()}</span>
+                  </div>
+                  <span className="ml-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 uppercase tracking-wider font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Interview in Progress
+                  </span>
+                </div>
 
-                    {/* Camera view inside card */}
-                    <div className="bg-[#02070A] overflow-hidden aspect-[4/3] relative flex items-center justify-center shadow-inner">
-                      {webcamOn ? (
-                        <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
-                      ) : (
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-600">
-                            <Camera className="w-5 h-5 animate-pulse" />
-                          </div>
-                          <p className="text-xs text-slate-500 font-medium text-center px-4">Checking hardware camera permissions...</p>
-                        </div>
-                      )}
+                {/* Floating Centered Proctor WebCam */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-1.5 z-45 bg-[#0B0F19] border border-white/[0.12] rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.5)] overflow-hidden w-[160px] aspect-[4/3] flex flex-col group transition-all duration-350 hover:scale-105">
+                  <div className="relative flex-grow bg-slate-950 flex items-center justify-center">
+                    {webcamOn ? (
+                      <video ref={setVideoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-center">
+                        <Camera className="w-5 h-5 text-slate-650 animate-pulse" />
+                        <span className="text-[8px] text-slate-500">Initializing...</span>
+                      </div>
+                    )}
+                    {/* HUD Label inside cam overlay */}
+                    <div className="absolute bottom-1 right-1.5 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[8px] text-slate-350 font-bold uppercase tracking-wider font-mono flex items-center gap-1">
+                      <span>You</span>
+                      <span className="w-1 h-2 bg-emerald-500 inline-block rounded-sm animate-pulse" />
+                    </div>
+                  </div>
+                </div>
 
-                      {/* HUD Overlay elements */}
-                      <div className="absolute inset-0 pointer-events-none" />
-                      
-                      {/* Laser scanner scanning effect */}
-                      {webcamOn && (
-                        <div className="absolute left-0 w-full h-[1.5px] bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent shadow-[0_0_8px_rgba(34,211,238,0.6)] pointer-events-none animate-[scan_4s_infinite_ease-in-out]" />
-                      )}
-
-                      {/* Cyber dotted mesh scanner grid overlay */}
-                      <div 
-                        className="absolute inset-0 pointer-events-none opacity-20"
-                        style={{
-                          backgroundImage: `
-                            linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px)
-                          `,
-                          backgroundSize: '36px 36px'
-                        }}
-                      />
-
-                      {/* Cyan L-shaped anchors */}
-                      <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-blue-400 pointer-events-none" />
-                      <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-blue-400 pointer-events-none" />
-                      <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-blue-400 pointer-events-none" />
-                      <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-blue-400 pointer-events-none" />
-
-                      {/* Centered face detection oval template */}
-                      <div className="absolute w-[120px] h-[144px] border-2 border-blue-500/35 rounded-[50%] pointer-events-none shadow-[0_0_15px_rgba(59,130,246,0.05)]" />
-
-                      {/* Recording badge */}
-                      <div className="absolute top-4 left-5 bg-red-950/35 text-red-300 border border-red-500/45 px-3 py-2 rounded-md text-sm font-mono tracking-wider flex items-center gap-2 shadow-md">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" />
-                        <span>REC</span>
+                {/* Right controls: Camera, Mic, Internet + Timer */}
+                <div className="flex items-center gap-6">
+                  {/* Micro system check tags */}
+                  <div className="flex items-center gap-4 text-xs font-medium text-slate-350">
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${webcamOn ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                        <Video className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="text-[10px] leading-tight">
+                        <p className="text-slate-500 font-bold uppercase text-[8px]">Camera</p>
+                        <p className="font-bold">{webcamOn ? 'ON' : 'OFF'}</p>
                       </div>
                     </div>
 
-                    <div className="h-[58px] px-7 flex items-center justify-between text-base font-mono text-[#6B7896]">
-                      <span className="flex items-center gap-3"><Square className="w-3.5 h-3.5 text-emerald-300" /> Validated</span>
-                      <span className="text-[#5B6280] flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Live
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${micOn ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                        <Mic className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="text-[10px] leading-tight">
+                        <p className="text-slate-500 font-bold uppercase text-[8px]">Mic</p>
+                        <p className="font-bold">{micOn ? 'ON' : 'OFF'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                        <Wifi className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="text-[10px] leading-tight">
+                        <p className="text-slate-500 font-bold uppercase text-[8px]">Internet</p>
+                        <p className="font-bold">Stable</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Red Bordered Countdown Timer */}
+                  <div className="border border-red-500/35 bg-red-950/20 px-4 py-2 rounded-xl flex items-center gap-3 text-red-400 font-mono tracking-wider text-sm font-bold shadow-[0_0_15px_rgba(239,68,68,0.08)]">
+                    <Clock className="w-4 h-4 text-red-400 animate-pulse" />
+                    <div className="flex flex-col text-right leading-none">
+                      <span className="text-[16px] tracking-widest font-black">
+                        {Math.floor(timeLeft / 3600).toString().padStart(2, '0')}:
+                        {Math.floor((timeLeft % 3600) / 60).toString().padStart(2, '0')}:
+                        {String(timeLeft % 60).padStart(2, '0')}
+                      </span>
+                      <span className="text-[7.5px] text-red-500/70 font-bold uppercase mt-0.5 tracking-wider">Time Remaining</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* MAIN CONTENT CARD WRAPPER */}
+              <div className="flex-grow flex items-center justify-center p-8 bg-[#080B11]">
+                <div className="w-full max-w-5xl bg-white rounded-2xl shadow-[0_24px_70px_rgba(0,0,0,0.45)] border border-slate-200 overflow-hidden text-slate-800 flex flex-col min-h-[460px]">
+                  
+                  {/* Top Progress Block (White Card Header) */}
+                  <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-bold text-slate-800" style={{ color: '#0f172a' }}>
+                        Question {currentQ + 1} of {questions.length}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-slate-500 tracking-wider">
+                        {Math.round(progressPercent)}% Completed
                       </span>
                     </div>
                   </div>
-                );
 
-                if (q.type !== 'coding') {
-                  // Standard Speech/MCQ environment overhual
-                  return (
-                    <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-6 px-6 py-[26px] items-start">
-                      
-                      {/* Left Column */}
-                      <div className="lg:col-span-7 flex flex-col gap-5 w-full">
-                        
-                        {/* Metrics Bar */}
-                        <div className="h-[88px] bg-[#10141C] border-2 border-[#202638] rounded-[22px] relative overflow-hidden shadow-lg grid grid-cols-[20%_80%]">
-                          {/* Segment 1: Question indicator */}
-                          <div className="flex flex-col justify-center px-8">
-                            <span className="text-base font-mono text-[#667293] uppercase tracking-[0.24em] leading-none">Question</span>
-                            <span className="text-[28px] font-black text-blue-400 mt-1 font-mono leading-none">
-                              {currentQ + 1} <span className="text-slate-700 text-lg">/</span> {questions.length}
-                            </span>
-                          </div>
+                  {/* Horizontal progress bar */}
+                  <div className="w-full h-1.5 bg-slate-100 relative">
+                    <div 
+                      className="absolute left-0 top-0 h-full bg-blue-600 transition-all duration-500 rounded-r-full"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
 
-                          {/* Middle border separator */}
-                          <div className="absolute left-[20%] top-0 bottom-0 w-[2px] bg-[#202638]" />
-
-                          {/* Segment 2: Time limit per question */}
-                          <div className="flex flex-col justify-center pl-9">
-                            <div className="flex items-center gap-6">
-                              <Square className="w-3.5 h-3.5 text-blue-300/80" />
-                              <span className="text-base font-mono text-[#667293] uppercase tracking-[0.24em] leading-none">Time Per Question</span>
-                            </div>
-                            <span className="text-[28px] font-black text-amber-500 mt-2 font-mono leading-none pl-10">
-                              {timeLeft % 60}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Question display card */}
-                        <div className="min-h-[424px] bg-[#10141C] border-2 border-[#202638] rounded-[24px] px-[50px] py-[48px] relative overflow-hidden shadow-lg">
-                          <span className="text-base text-[#667293] uppercase tracking-[0.28em] font-mono mb-7 block">Question Display</span>
-                          <h3 className="text-[40px] font-extrabold text-white leading-tight tracking-tight mb-8 whitespace-pre-line">
-                            {q.text}
-                          </h3>
-
-                          <div className="flex flex-wrap gap-4">
-                            <span className={`text-sm px-5 py-2 rounded-lg font-bold font-mono tracking-wide uppercase border-2 ${
-                              q.difficulty === 'hard' 
-                                ? 'text-red-400 border-red-500/20 bg-red-950/20' 
-                                : q.difficulty === 'medium' 
-                                ? 'text-amber-400 border-amber-500/20 bg-amber-950/20' 
-                                : 'text-emerald-400 border-emerald-500/20 bg-emerald-950/20'
-                            }`}>
-                              {q.difficulty}
-                            </span>
-                            <span className="text-sm px-5 py-2 rounded-lg font-bold font-mono tracking-wide uppercase text-blue-300 border-2 border-blue-600/60 bg-blue-950/20">
-                              AI Interviewer
-                            </span>
-                            {q.type !== 'mcq' && (
-                              <button
-                                onClick={() => setShowManualInput(!showManualInput)}
-                                className={`text-[10px] px-3 py-1 rounded-lg font-bold font-mono tracking-wider uppercase border cursor-pointer transition-all duration-200 ${
-                                  showManualInput
-                                    ? 'text-emerald-450 border-emerald-500/30 bg-emerald-950/20'
-                                    : 'text-slate-400 border-slate-700 bg-slate-800/30 hover:border-slate-600 hover:text-white'
-                                }`}
-                              >
-                                <span className="flex items-center gap-1.5">
-                                  <FileText className="w-3.5 h-3.5" />
-                                  {showManualInput ? 'Hide Typing Panel' : 'Type Answer Manually'}
-                                </span>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* MCQ options selection grid */}
-                        {q.type === 'mcq' && q.options && (
-                          <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex flex-col gap-4">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Select Response Option</span>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {Object.entries(q.options).map(([key, val]) => {
-                                const isSelected = answers[q.id] === key;
-                                return (
-                                  <label
-                                    key={key}
-                                    className={`p-4 border rounded-2xl cursor-pointer flex items-center gap-4 transition-all relative overflow-hidden group ${
-                                      isSelected 
-                                        ? 'border-blue-500/80 bg-blue-950/20 shadow-md' 
-                                        : 'border-slate-800 bg-[#060814] hover:bg-slate-800/40 hover:border-slate-700'
-                                    }`}
-                                  >
-                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all ${
-                                      isSelected
-                                        ? 'border-blue-500 bg-blue-500 text-white shadow-sm'
-                                        : 'border-slate-700 bg-slate-800 group-hover:border-slate-600'
-                                    }`}>
-                                      <input
-                                        type="radio"
-                                        name={`choices-${q.id}`}
-                                        value={key}
-                                        checked={isSelected}
-                                        onChange={() => {
-                                          setAnswers((prev) => ({ ...prev, [q.id]: key }));
-                                          latestTranscriptRef.current = key;
-                                        }}
-                                        className="sr-only"
-                                      />
-                                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                                    </div>
-                                    <span className="text-sm font-semibold transition-colors text-slate-300 group-hover:text-white">
-                                      <span className={`mr-2 uppercase font-black transition-colors ${isSelected ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-400'}`}>{key}</span>
-                                      {val}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Speech transcription editor (Voice mode essay questions) */}
-                        {q.type !== 'mcq' && showManualInput && (
-                          <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 shadow-lg flex flex-col gap-4 animate-[fadeIn_0.2s_ease-out]">
-                            <div className="flex items-center justify-between border-b border-slate-900 pb-3">
-                              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 font-mono">
-                                <Volume2 className="w-4 h-4 text-blue-400 animate-pulse" /> Speech Transcription Monitor
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => {
-                                    if (isTtsSpeaking) {
-                                      if (window.speechSynthesis) window.speechSynthesis.cancel();
-                                      setIsTtsSpeaking(false);
-                                      startSpeechRecognition();
-                                    } else if (isListening) {
-                                      stopSpeechRecognition();
-                                    } else {
-                                      startSpeechRecognition();
-                                    }
-                                  }}
-                                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all cursor-pointer uppercase font-mono ${
-                                    isListening 
-                                      ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/20 animate-pulse' 
-                                      : 'bg-blue-950/20 text-blue-400 border-blue-500/20'
-                                  }`}
-                                >
-                                  <Mic className={`w-3.5 h-3.5 ${isListening ? 'text-emerald-400' : 'text-blue-400'}`} />
-                                  <span>{isListening ? 'Listening' : 'Mic Paused'}</span>
-                                </button>
-                                {answers[q.id] && (
-                                  <span className="text-[10px] text-emerald-400 bg-emerald-950/20 px-2.5 py-1 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-wider font-mono">
-                                    Saved Live
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className={`min-h-[140px] rounded-xl border transition-all duration-300 flex flex-col justify-center overflow-hidden bg-[#060814] ${
-                              isListening ? 'border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.02)]' : 'border-slate-800 focus-within:border-blue-500/60'
-                            }`}>
-                              {answers[q.id] ? (
-                                <textarea
-                                  value={answers[q.id]}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setAnswers((prev) => ({ ...prev, [q.id]: val }));
-                                    latestTranscriptRef.current = val;
-                                    accumulatedTextRef.current = val;
-                                  }}
-                                  placeholder="Spoken answers will be transcribed here automatically."
-                                  className="w-full min-h-[140px] bg-transparent text-sm leading-relaxed text-slate-200 p-5 focus:outline-none resize-none placeholder-slate-650 font-sans border-0 focus:ring-0"
-                                />
-                              ) : (
-                                <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-center p-6 space-y-3">
-                                  <div className="w-10 h-10 rounded-full bg-[#0C101F] border border-slate-800 flex items-center justify-center text-slate-500">
-                                    <Mic className="w-5 h-5 animate-pulse" />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-400">Waiting for candidate voice response...</p>
-                                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                                      Speak clearly to allow the AI model to capture your answer, or click below to type your essay response manually.
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: ' ' }))}
-                                    className="mt-2 text-[10px] font-bold text-blue-400 flex items-center gap-1.5 bg-blue-950/20 px-3 py-2 rounded-lg border border-blue-500/20 hover:bg-blue-950/40 hover:text-white transition-all cursor-pointer"
-                                  >
-                                    <FileText className="w-3.5 h-3.5" /> Type Answer Manually
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1 font-mono">
-                              <span>Characters: {answers[q.id] ? answers[q.id].length : 0}</span>
-                              <span>Auto-Save Active</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Action buttons */}
-                        <div className="min-h-[127px] bg-[#10141C] border-2 border-[#202638] rounded-[24px] px-8 py-7 flex items-center gap-5 shadow-lg">
-                          <button
-                            onClick={() => {
-                              if (isListening) {
-                                stopSpeechRecognition();
-                              } else {
-                                startSpeechRecognition();
-                              }
-                            }}
-                            className={`h-[68px] max-w-[280px] flex items-center justify-center gap-5 px-8 border-2 rounded-[14px] font-extrabold text-[28px] transition-all duration-200 cursor-pointer flex-1 ${
-                              isListening 
-                                ? 'border-red-500/30 bg-red-950/20 text-red-400 hover:bg-red-950/40' 
-                                : 'border-white/35 bg-transparent text-white hover:bg-slate-800/40 hover:border-slate-500'
-                            }`}
-                          >
-                            <Square className={`w-4 h-4 ${isListening ? 'text-red-400 fill-red-400' : 'text-slate-500'}`} />
-                            <span>{isListening ? 'Stop Record' : 'Start Record'}</span>
-                          </button>
-
-                          <button
-                            onClick={handleNextQuestion}
-                            className="h-[68px] max-w-[296px] flex items-center justify-center gap-5 px-8 border-2 border-white/35 bg-transparent text-white font-extrabold text-[28px] rounded-[14px] hover:bg-slate-800/40 hover:border-slate-500 transition-all duration-200 cursor-pointer flex-1"
-                          >
-                            <span>{currentQ < questions.length - 1 ? 'Next Question' : 'Complete Assessment'}</span>
-                            <Square className="w-4 h-4 text-slate-500" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Right Column */}
-                      <div className="lg:col-span-5 flex flex-col gap-5 w-full">
-                        {renderCandidateCameraCard()}
-
-                        {/* Network Speed Widget */}
-                        <div className="h-[102px] bg-[#10141C] border-2 border-[#202638] rounded-[18px] px-8 shadow-lg flex items-center justify-between relative overflow-hidden">
-                          <div className="flex items-center gap-5">
-                            <div className="w-5 h-5 flex items-center justify-center text-blue-400">
-                              <Square className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <span className="text-sm text-[#667293] uppercase tracking-[0.28em] font-mono block">Network Speed</span>
-                              <span className="text-xl font-extrabold text-emerald-400 mt-1 block leading-none">Good</span>
-                            </div>
-                          </div>
-
-                          {/* Graphical signal strength bars */}
-                          <div className="flex items-end gap-2 h-10">
-                            <div className="w-2 h-3 bg-blue-500 rounded-full" />
-                            <div className="w-2 h-5 bg-blue-500 rounded-full" />
-                            <div className="w-2 h-7 bg-blue-500 rounded-full" />
-                            <div className="w-2 h-9 bg-blue-500 rounded-full" />
-                            <div className="w-2 h-10 bg-slate-700/60 rounded-full" />
-                          </div>
-                        </div>
-                      </div>
+                  {/* Inner workspace details */}
+                  <div className="p-8 flex-grow flex flex-col justify-between">
+                    
+                    {/* Badge + Question Header */}
+                    <div>
+                      <span className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-100 uppercase tracking-wider mb-4">
+                        {q.type === 'coding' ? 'Coding Challenge' : q.type === 'mcq' ? 'Aptitude Question' : 'Technical Question'}
+                      </span>
+                      <h2 className="text-xl font-extrabold leading-relaxed mb-6" style={{ color: '#0f172a' }}>
+                        {q.text}
+                      </h2>
                     </div>
-                  );
-                } else {
-                  // Coding environment overhaul under cyber dark theme
-                  return (
-                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 items-stretch">
-                      
-                      {/* Left stack (5 of 12 cols): prompt card & camera */}
-                      <div className="lg:col-span-5 flex flex-col gap-6 overflow-y-auto max-h-[calc(100vh-140px)] pr-1">
-                        
-                        {/* Metrics bar */}
-                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-5 relative overflow-hidden shadow-lg grid grid-cols-2">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">Question</span>
-                            <span className="text-xl font-black text-blue-400 font-mono mt-0.5">
-                              {currentQ + 1} / {questions.length}
-                            </span>
-                          </div>
-                          <div className="flex flex-col pl-4 border-l border-slate-800/80">
-                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono">Time Per Question</span>
-                            <span className="text-xl font-black text-amber-500 font-mono mt-0.5 flex items-center gap-1.5">
-                              <Clock className="w-4 h-4 text-amber-500 animate-pulse" />
-                              {timeLeft % 60}
-                            </span>
-                          </div>
-                        </div>
 
-                        {/* Question details */}
-                        <div className="bg-[#0C101F] border border-blue-500/10 rounded-2xl p-6 relative overflow-hidden shadow-lg flex flex-col gap-4">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Question Prompt</span>
-                          <h3 className="text-lg font-bold text-white leading-relaxed tracking-tight whitespace-pre-line">
-                            {q.text}
-                          </h3>
-                          <div className="flex gap-2">
-                            <span className="text-[9px] px-2.5 py-0.5 rounded bg-amber-950/20 text-amber-400 border border-amber-500/20 font-bold uppercase tracking-wider font-mono">
-                              {q.difficulty}
-                            </span>
-                            <span className="text-[9px] px-2.5 py-0.5 rounded bg-blue-950/20 text-blue-400 border border-blue-500/20 font-bold uppercase tracking-wider font-mono">
-                              Coding Lab
-                            </span>
-                          </div>
-                        </div>
-
-                        {renderCandidateCameraCard()}
-                      </div>
-
-                      {/* Right stack (7 of 12 cols): coding compiler workspace */}
-                      <div className="lg:col-span-7 flex flex-col bg-[#0C101F] border border-blue-500/10 rounded-2xl overflow-hidden shadow-xl min-h-[500px]">
-                        {/* Header toolbar */}
-                        <div className="bg-[#0A0D14] px-4 py-3.5 border-b border-slate-850 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2 text-slate-300">
+                    {/* Active Question response inputs */}
+                    {q.type === 'coding' ? (
+                      /* Coding Environment Workspace */
+                      <div className="flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-inner flex-grow min-h-[300px] mb-4">
+                        <div className="bg-slate-900 px-4 py-3.5 border-b border-slate-800 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2 text-slate-350">
                             <FileCode className="w-4 h-4 text-blue-400" />
                             <span className="font-bold font-mono">solution.{selectedLang === 'python' ? 'py' : selectedLang === 'cpp' ? 'cpp' : 'js'}</span>
                           </div>
@@ -1662,7 +1433,7 @@ export default function InterviewRoom() {
                                 [q.id]: q.options?.starters?.[e.target.value] || '',
                               }));
                             }}
-                            className="bg-[#060814] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer font-mono"
+                            className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer font-mono"
                           >
                             <option value="javascript">JavaScript (Node)</option>
                             <option value="python">Python 3</option>
@@ -1670,10 +1441,9 @@ export default function InterviewRoom() {
                           </select>
                         </div>
 
-                        {/* Editor body */}
-                        <div className="flex-grow flex overflow-hidden bg-[#060814] font-mono text-xs">
-                          <div className="w-12 bg-[#0A0D14]/60 border-r border-slate-900 text-right select-none pr-3 py-4 text-slate-700 font-mono leading-[20px]">
-                            {Array.from({ length: Math.max((answers[q.id] || q.options?.starters?.[selectedLang] || '').split('\n').length, 25) }).map((_, i) => (
+                        <div className="flex-grow flex overflow-hidden bg-slate-950 font-mono text-xs text-emerald-400">
+                          <div className="w-12 bg-slate-900 border-r border-slate-850 text-right select-none pr-3 py-4 text-slate-650 font-mono leading-[20px]">
+                            {Array.from({ length: Math.max((answers[q.id] || q.options?.starters?.[selectedLang] || '').split('\n').length, 12) }).map((_, i) => (
                               <div key={i} className="h-5">{i + 1}</div>
                             ))}
                           </div>
@@ -1681,43 +1451,176 @@ export default function InterviewRoom() {
                           <textarea
                             value={answers[q.id] || q.options?.starters?.[selectedLang] || ''}
                             onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                            className="flex-grow bg-transparent text-emerald-450 p-4 focus:outline-none leading-[20px] resize-none selection:bg-slate-800 border-0 focus:ring-0 font-mono"
+                            className="flex-grow bg-transparent text-emerald-400 p-4 focus:outline-none leading-[20px] resize-none selection:bg-slate-800 border-0 focus:ring-0 font-mono"
                           />
                         </div>
 
-                        {/* Logs section */}
                         {runLogs.length > 0 && (
-                          <div className="max-h-[140px] overflow-y-auto bg-[#0A0D14] border-t border-slate-850 p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap divide-y divide-slate-800">
+                          <div className="max-h-[100px] overflow-y-auto bg-slate-900 border-t border-slate-800 p-4 text-xs font-mono text-slate-300 whitespace-pre-wrap">
                             {runLogs.map((log, lIdx) => (
-                              <div key={lIdx} className="py-1 text-cyan-400/90">{log}</div>
+                              <div key={lIdx} className="py-0.5 text-cyan-400/90">{log}</div>
                             ))}
                           </div>
                         )}
 
-                        {/* Compilation footer action bar */}
-                        <div className="bg-[#0A0D14] px-4 py-3 border-t border-slate-850 flex justify-between items-center">
+                        <div className="bg-slate-900 px-4 py-2.5 border-t border-slate-800 flex justify-between items-center">
                           <button
                             onClick={handleRunCode}
                             disabled={runningCode}
-                            className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-700 text-white text-xs font-semibold py-2 px-4 rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer transition-colors"
+                            className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-750 text-white text-xs font-semibold py-1.5 px-4 rounded-lg shadow-md flex items-center gap-1.5 cursor-pointer transition-colors"
                           >
                             {runningCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                             <span>Run Sandbox Compiler</span>
                           </button>
-
-                          <button
-                            onClick={handleNextQuestion}
-                            className="flex items-center gap-1.5 px-4 py-2 border border-slate-800 bg-transparent text-white font-semibold text-xs rounded-lg hover:bg-white hover:text-black transition-all cursor-pointer"
-                          >
-                            <span>{currentQ < questions.length - 1 ? 'Save & Next' : 'Complete Assessment'}</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
                         </div>
                       </div>
+                    ) : q.type === 'mcq' && q.options ? (
+                      /* MCQ options card layout */
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        {Object.entries(q.options).map(([key, val]) => {
+                          const isSelected = answers[q.id] === key;
+                          return (
+                            <label
+                              key={key}
+                              className={`p-4 border rounded-xl cursor-pointer flex items-center gap-4.5 transition-all relative overflow-hidden group ${
+                                isSelected 
+                                  ? 'border-blue-500 bg-blue-50/50 shadow-sm' 
+                                  : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
+                              }`}
+                            >
+                              <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all ${
+                                isSelected
+                                  ? 'border-blue-500 bg-blue-600 text-white'
+                                  : 'border-slate-300 bg-slate-50 group-hover:border-slate-400'
+                              }`}>
+                                <input
+                                  type="radio"
+                                  name={`choices-${q.id}`}
+                                  value={key}
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setAnswers((prev) => ({ ...prev, [q.id]: key }));
+                                    latestTranscriptRef.current = key;
+                                  }}
+                                  className="sr-only"
+                                />
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <span className="text-sm font-semibold text-slate-800">
+                                <span className={`mr-2.5 uppercase font-black ${isSelected ? 'text-blue-650' : 'text-slate-400'}`}>{key}.</span>
+                                {val}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* Rich Text Editor Frame for Essay/Technical responses */
+                      <div className="flex flex-col border border-slate-200 rounded-xl overflow-hidden shadow-sm mb-5 bg-white">
+                        
+                        {/* Interactive Rich text-style typing area */}
+                        <div className="min-h-[200px] flex flex-col justify-start">
+                          <textarea
+                            value={answers[q.id] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAnswers((prev) => ({ ...prev, [q.id]: val }));
+                              latestTranscriptRef.current = val;
+                              accumulatedTextRef.current = val;
+                            }}
+                            placeholder="Type your answer here..."
+                            className="w-full min-h-[160px] p-5 text-slate-800 placeholder-slate-400 text-sm focus:outline-none resize-none border-0 focus:ring-0 leading-relaxed font-sans"
+                          />
+                        </div>
+
+                        {/* Rich Formatting Toolbar mimicking mockup */}
+                        <div className="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between bg-slate-50 text-slate-500 text-sm font-medium select-none">
+                          <div className="flex items-center gap-4.5">
+                            <button className="hover:text-slate-800 cursor-pointer font-bold font-serif" title="Bold">B</button>
+                            <button className="hover:text-slate-800 cursor-pointer italic font-serif" title="Italic">I</button>
+                            <button className="hover:text-slate-800 cursor-pointer underline font-serif" title="Underline">U</button>
+                            <div className="h-4 w-[1px] bg-slate-200" />
+                            <button className="hover:text-slate-800 cursor-pointer font-mono" title="Bulleted List">•—</button>
+                            <button className="hover:text-slate-800 cursor-pointer font-mono" title="Numbered List">1—</button>
+                            <div className="h-4 w-[1px] bg-slate-200" />
+                            <button className="hover:text-slate-800 cursor-pointer" title="Insert Code" onClick={() => setShowManualInput(!showManualInput)}>
+                              <FileCode className="w-4 h-4 text-slate-400 hover:text-slate-700" />
+                            </button>
+                            {/* Voice recording activation trigger inside toolbar */}
+                            <button 
+                              onClick={() => {
+                                if (isListening) {
+                                  stopSpeechRecognition();
+                                } else {
+                                  startSpeechRecognition();
+                                }
+                              }}
+                              className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[9px] font-bold font-mono tracking-wider uppercase transition-all ${
+                                isListening 
+                                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 animate-pulse' 
+                                  : 'bg-blue-50 text-blue-600 border-blue-100'
+                              }`}
+                            >
+                              <Mic className="w-3 h-3" />
+                              <span>{isListening ? 'Voice Typing' : 'Enable Voice'}</span>
+                            </button>
+                          </div>
+                          <div>
+                            <span className="text-xs text-slate-400 font-mono">
+                              {answers[q.id] ? answers[q.id].trim().split(/\s+/).filter(Boolean).length : 0} words
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Auto-Save Notification Footer banner inside card */}
+                    <div className="bg-blue-50/60 border border-blue-100/60 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-slate-650">
+                      <Lock className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                      <span>You can type your answer in the box above. Your answer is <strong className="text-blue-600 font-bold">auto-saved</strong> every 10 seconds.</span>
                     </div>
-                  );
-                }
-              })()}
+
+                  </div>
+                </div>
+              </div>
+
+              {/* BOTTOM BAR / CONTROLS (DARK) */}
+              <div className="bg-[#0A0E17] border-t border-white/[0.08] px-8 py-4 flex items-center justify-between z-30">
+                {/* Previous question button */}
+                <button
+                  disabled={currentQ === 0}
+                  onClick={() => currentQ > 0 && setCurrentQ(currentQ - 1)}
+                  className="px-6 h-11 border border-white/[0.12] bg-[#0E1524] text-white hover:bg-slate-900 disabled:opacity-35 disabled:cursor-not-allowed rounded-xl text-[13px] font-semibold flex items-center gap-2 cursor-pointer transition-colors active:scale-98"
+                >
+                  <ChevronRight className="w-4 h-4 rotate-180" />
+                  <span>Previous</span>
+                </button>
+
+                {/* Center actions */}
+                <div className="flex items-center gap-3">
+                  <button className="px-6 h-11 border border-white/[0.12] bg-[#0E1524] hover:bg-slate-900 text-white rounded-xl text-[13px] font-semibold flex items-center gap-2 cursor-pointer transition-colors active:scale-98">
+                    <Award className="w-4 h-4 text-slate-400" />
+                    <span>Mark for Review</span>
+                  </button>
+
+                  <button 
+                    onClick={handleNextQuestion}
+                    className="px-6 h-11 border border-white/[0.12] bg-[#0E1524] hover:bg-slate-900 text-white rounded-xl text-[13px] font-semibold flex items-center gap-2 cursor-pointer transition-colors active:scale-98"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                    <span>Skip Question</span>
+                  </button>
+                </div>
+
+                {/* Primary Action Button (Vibrant blue) */}
+                <button
+                  onClick={handleNextQuestion}
+                  className="px-8 h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[13px] font-bold flex items-center gap-2.5 shadow-lg shadow-blue-500/20 cursor-pointer transition-all active:scale-98"
+                >
+                  <span>{currentQ < questions.length - 1 ? 'Save & Next' : 'Submit Assessment'}</span>
+                  <ChevronRight className="w-4 h-4 font-bold" />
+                </button>
+              </div>
 
               {/* Warning notifications absolute banner */}
               {tabWarnings > 0 && (

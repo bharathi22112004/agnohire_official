@@ -20,6 +20,66 @@ export default function CandidateUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef();
 
+  // Preview States
+  const [previewData, setPreviewData] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewData([]);
+      setPreviewError(null);
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    const reader = new FileReader();
+
+    if (file.name.endsWith('.csv')) {
+      reader.onload = (e) => {
+        import('papaparse').then((Papa) => {
+          Papa.default.parse(e.target.result, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              setPreviewData(results.data.slice(0, 10));
+              setPreviewLoading(false);
+            },
+            error: (err) => {
+              setPreviewError('Failed to parse CSV file: ' + err.message);
+              setPreviewLoading(false);
+            }
+          });
+        });
+      };
+      reader.readAsText(file);
+    } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      reader.onload = (e) => {
+        import('xlsx').then((XLSX) => {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+            setPreviewData(json.slice(0, 10));
+            setPreviewLoading(false);
+          } catch (err) {
+            setPreviewError('Failed to parse Excel file: ' + err.message);
+            setPreviewLoading(false);
+          }
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      setPreviewError('Unsupported file format. Please upload CSV or Excel.');
+      setPreviewLoading(false);
+    }
+  }, [file]);
+
   // Persistent Upload History State
   const [uploadHistory, setUploadHistory] = useState(() => {
     try {
@@ -222,6 +282,24 @@ export default function CandidateUpload() {
               <span style={{ flex: 1, fontSize: 13 }}>{file.name}</span>
               <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{(file.size / 1024).toFixed(1)} KB</span>
               <button
+                type="button"
+                onClick={() => setShowPreviewModal(true)}
+                style={{
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  color: 'var(--color-primary-500)',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginRight: 4,
+                  transition: 'background 0.2s',
+                }}
+              >
+                Preview
+              </button>
+              <button
                 onClick={() => setFile(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
@@ -272,6 +350,8 @@ export default function CandidateUpload() {
           </div>
         </div>
       </div>
+
+      {/* File Preview inline card removed - now in dynamic overlay modal */}
 
       {/* History & Results Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20, marginTop: 24 }}>
@@ -565,6 +645,143 @@ export default function CandidateUpload() {
         </div>
 
       </div>
+
+      {/* File Preview Modal */}
+      <AnimatePresence>
+        {showPreviewModal && file && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.6)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="card"
+              style={{
+                width: '100%',
+                maxWidth: 1000,
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column',
+                padding: 28,
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                border: '1px solid var(--border-color)',
+                position: 'relative'
+              }}
+            >
+              {/* Close Button */}
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: 20,
+                  right: 20,
+                  background: 'var(--bg-surface-2)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '50%',
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <X size={16} />
+              </button>
+
+              {/* Title & Info */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, paddingRight: 40 }}>
+                <FileSpreadsheet size={24} style={{ color: 'var(--color-primary-500)' }} />
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                    File Preview: {file.name}
+                  </h3>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                    Previewing the first {previewData.length} records parsed from your spreadsheet
+                  </p>
+                </div>
+              </div>
+
+              {/* Preview Content */}
+              <div style={{ flex: 1, overflowY: 'auto', marginBottom: 20, border: '1px solid var(--border-color)', borderRadius: 8 }}>
+                {previewLoading ? (
+                  <div style={{ padding: '64px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <div style={{
+                      width: 32, height: 32,
+                      border: '3px solid rgba(99, 102, 241, 0.2)',
+                      borderTopColor: 'var(--color-primary-500)',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite',
+                      margin: '0 auto 16px'
+                    }} />
+                    <p style={{ fontSize: 14, fontWeight: 500, margin: 0 }}>Analyzing file content...</p>
+                  </div>
+                ) : previewError ? (
+                  <div style={{ padding: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'var(--color-danger)', textAlign: 'center' }}>
+                    <AlertCircle size={40} style={{ marginBottom: 12, opacity: 0.8 }} />
+                    <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Error Parsing Spreadsheet</p>
+                    <p style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>{previewError}</p>
+                  </div>
+                ) : previewData.length === 0 ? (
+                  <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <p style={{ fontSize: 13, margin: 0 }}>No data could be retrieved from the file preview.</p>
+                  </div>
+                ) : (
+                  <div className="table-wrapper">
+                    <table style={{ margin: 0 }}>
+                      <thead style={{ position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--bg-surface)' }}>
+                        <tr>
+                          {Object.keys(previewData[0] || {}).map((header) => (
+                            <th key={header}>{header}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewData.map((row, idx) => (
+                          <tr key={idx}>
+                            {Object.values(row).map((val, cellIdx) => (
+                              <td key={cellIdx} style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                {String(val)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+                <Button variant="secondary" onClick={() => setShowPreviewModal(false)}>
+                  Close Preview
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowPreviewModal(false);
+                    handleUpload();
+                  }}
+                  disabled={previewLoading || !!previewError}
+                >
+                  Confirm & Process Upload
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

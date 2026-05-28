@@ -123,13 +123,13 @@ export const emailService = {
           <div class="container">
             <div class="header">
               <h1>AgnoHire</h1>
-              <p>AI-Powered Recruitment Platform</p>
+              <p>Recruitment Platform</p>
             </div>
             <div class="body">
               <h2 style="color: #0f172a; margin-top: 0;">Interview Invitation</h2>
               <p style="color: #475569;">Dear <strong>${candidate.name}</strong>,</p>
-              <p style="color: #475569;">You have been invited to complete an AI-powered interview. Please review the details below and click the button to begin your session.</p>
-              
+              <p style="color: #475569;">You have been invited to complete an interview. Please review the details below and click the button to begin your session.</p>
+
               <div class="info-card">
                 <div class="info-row">
                   <span class="label">Interviewer</span>
@@ -155,7 +155,7 @@ export const emailService = {
               <p style="color: #94a3b8; font-size: 12px;">If you did not expect this invitation, please contact us immediately. This link will expire after your scheduled time.</p>
             </div>
             <div class="footer">
-              <p>© ${new Date().getFullYear()} AgnoHire — AI Recruitment Platform</p>
+              <p>© ${new Date().getFullYear()} AgnoHire — Recruitment Platform</p>
             </div>
           </div>
         </body>

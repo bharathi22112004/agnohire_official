@@ -151,6 +151,7 @@ model Candidate {
   domainId        String?   @map("domain_id")
   experienceLevel String?   @map("experience_level") // junior | mid | senior
   skills          Json      @default("[]")
+  additionalInfo  Json?     @default("[]") @map("additional_info")
   sectorId        String?   @map("sector_id")
   status          String    @default("pending") // pending | assigned | interviewed | passed | failed | held
   listId          String?   @map("list_id")
@@ -299,6 +300,7 @@ model Question {
   skillTags     Json     @default("[]") @map("skill_tags")
   createdBy     String?  @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at")
+  order         Int      @default(0)
 
   bank    QuestionBank      @relation(fields: [bankId], references: [id], onDelete: Cascade)
   creator User?             @relation(fields: [createdBy], references: [id])

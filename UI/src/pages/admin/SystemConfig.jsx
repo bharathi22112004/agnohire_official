@@ -233,7 +233,7 @@ export default function AdminConfig() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input
                   className="input"
-                  placeholder="e.g. ragul@genagno.ai"
+                  placeholder="e.g. user@gmail.com"
                   defaultValue={configs[smtpUserKey] || ''}
                   onBlur={(e) => handleSave(smtpUserKey, e.target.value.trim())}
                   style={{ flex: 1, height: 38 }}

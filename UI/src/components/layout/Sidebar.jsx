@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, FileText, ClipboardList,
   Calendar, CheckSquare, BookOpen, Mail, Settings, LogOut,
   ChevronLeft, ChevronRight, ShieldAlert,
-  Cpu, BarChart3,
+  Target, BarChart3,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -74,7 +74,7 @@ export function Sidebar({ collapsed, onToggle }) {
         borderBottom: '1px solid var(--border-color)', gap: 12, overflow: 'hidden',
       }}>
         <div className="sidebar-logo-mark">
-          <Cpu size={19} />
+          <Target size={19} />
         </div>
         <AnimatePresence>
           {!collapsed && (
@@ -84,7 +84,7 @@ export function Sidebar({ collapsed, onToggle }) {
               exit={{ opacity: 0, width: 0 }}
               style={{
                 fontWeight: 800, fontSize: 18,
-                color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden',
+                color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden',
               }}
             >
               {platformName}
@@ -95,13 +95,7 @@ export function Sidebar({ collapsed, onToggle }) {
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: '7px', overflowY: 'auto', overflowX: 'hidden' }}>
-        {!collapsed && (
-          <div style={{ padding: '8px 8px 4px', marginBottom: 4 }}>
-            <span className={`badge badge-role-${role?.toLowerCase() || 'candidate'}`}>
-              {role?.toUpperCase()}
-            </span>
-          </div>
-        )}
+
 
         {navItems.map(({ path, icon: Icon, label }) => (
           <NavLink
@@ -131,38 +125,41 @@ export function Sidebar({ collapsed, onToggle }) {
 
       {/* User + Collapse */}
       <div style={{
-        borderTop: '1px solid var(--border-color)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
         padding: '12px 12px',
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
       }}>
         {/* User row */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '8px 8px', borderRadius: 8, overflow: 'hidden',
-          background: 'var(--bg-surface-2)',
-          border: '1px solid var(--border-color)',
-        }}>
-          <Avatar name={user?.name} src={user?.avatarUrl} size="sm" />
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {user?.name}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  {role}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {!collapsed ? (
+          <div style={{
+            padding: '4px 8px 8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            alignItems: 'flex-start'
+          }}>
+            <span style={{
+              background: '#fae8ff',
+              color: '#86198f',
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '2px 10px',
+              borderRadius: 9999,
+              display: 'inline-block'
+            }}>
+              {role === 'superadmin' ? 'Super Admin' : role === 'admin' ? 'Admin' : role === 'hr' ? 'HR Manager' : role === 'recruiter' ? 'Recruiter' : 'Candidate'}
+            </span>
+            <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
+              {user?.email || 'superadmin@agnohire.com'}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0' }}>
+            <Avatar name={user?.name} src={user?.avatarUrl} size="sm" />
+          </div>
+        )}
 
         {/* Logout */}
         <button
