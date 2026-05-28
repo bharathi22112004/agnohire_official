@@ -34,6 +34,7 @@ const RecruiterDashboard = lazy(() => import('../pages/recruiter/Dashboard'));
 const RecruiterScheduling = lazy(() => import('../pages/recruiter/InterviewScheduling'));
 const RecruiterReview = lazy(() => import('../pages/recruiter/InterviewReview'));
 const RecruiterQuestionBank = lazy(() => import('../pages/recruiter/QuestionBank'));
+const LiveSessionMonitor = lazy(() => import('../modules/recruiter/pages/LiveSessionMonitor'));
 
 // Candidate
 const InterviewRoom = lazy(() => import('../pages/candidate/InterviewRoom'));
@@ -91,6 +92,7 @@ export function AppRouter() {
             <Route path="/recruiter/scheduling" element={<RecruiterScheduling />} />
             <Route path="/recruiter/review" element={<RecruiterReview />} />
             <Route path="/recruiter/question-bank" element={<RecruiterQuestionBank />} />
+            <Route path="/recruiter/live-monitor" element={<LiveSessionMonitor />} />
           </Route>
 
           {/* Candidate — Public */}

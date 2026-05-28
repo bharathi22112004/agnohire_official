@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, Building2, FileText, ClipboardList,
   Calendar, CheckSquare, BookOpen, Mail, Settings, LogOut,
   ChevronLeft, ChevronRight, ShieldAlert,
-  Cpu, BarChart3,
+  Cpu, BarChart3, Monitor,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -36,6 +36,7 @@ const navConfig = {
   ],
   recruiter: [
     { path: '/recruiter', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/recruiter/live-monitor', icon: Monitor, label: 'Live Session Monitor' },
     { path: '/recruiter/scheduling', icon: Calendar, label: 'Interview Scheduling' },
     { path: '/recruiter/review', icon: CheckSquare, label: 'Review & Validate' },
     { path: '/recruiter/question-bank', icon: BookOpen, label: 'Question Bank' },
