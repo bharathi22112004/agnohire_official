@@ -26,7 +26,7 @@ const THEME_COLORS = [
 
 export function ThemeCustomizer() {
   const [isOpen, setIsOpen] = useState(false);
-  const { 
+  const {
     theme, setTheme,
     themeColor, setThemeColor,
     topBarColor, setTopBarColor,
@@ -112,7 +112,7 @@ export function ThemeCustomizer() {
 
             {/* Scrollable Content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
-              
+
               {/* Color Mode */}
               <div>
                 <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600 }}>Color Mode</h3>
@@ -163,9 +163,9 @@ export function ThemeCustomizer() {
                   ))}
                   <div style={{ position: 'relative', width: 36, height: 36, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', cursor: 'pointer' }} title="Custom Color">
                     <Palette size={14} style={{ color: '#fff' }} />
-                    <input 
-                      type="color" 
-                      onChange={(e) => setTopBarColor(e.target.value)} 
+                    <input
+                      type="color"
+                      onChange={(e) => setTopBarColor(e.target.value)}
                       style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
                     />
                   </div>
@@ -193,9 +193,9 @@ export function ThemeCustomizer() {
                   ))}
                   <div style={{ position: 'relative', width: 36, height: 36, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', cursor: 'pointer' }} title="Custom Color">
                     <Palette size={14} style={{ color: '#fff' }} />
-                    <input 
-                      type="color" 
-                      onChange={(e) => setSidebarColor(e.target.value)} 
+                    <input
+                      type="color"
+                      onChange={(e) => setSidebarColor(e.target.value)}
                       style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
                     />
                   </div>
@@ -241,9 +241,9 @@ export function ThemeCustomizer() {
                   ))}
                   <div style={{ position: 'relative', width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', cursor: 'pointer' }} title="Custom Color">
                     <Palette size={14} style={{ color: '#fff' }} />
-                    <input 
-                      type="color" 
-                      onChange={(e) => setThemeColor(e.target.value)} 
+                    <input
+                      type="color"
+                      onChange={(e) => setThemeColor(e.target.value)}
                       style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
                     />
                   </div>

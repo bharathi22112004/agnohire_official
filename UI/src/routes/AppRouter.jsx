@@ -27,7 +27,6 @@ const AdminConfig = lazy(() => import('../pages/admin/SystemConfig'));
 const HRDashboard = lazy(() => import('../pages/hr/Dashboard'));
 const HRUpload = lazy(() => import('../pages/hr/CandidateUpload'));
 const HRAssignment = lazy(() => import('../pages/hr/CandidateAssignment'));
-const HRSchedule = lazy(() => import('../pages/hr/ScheduleManagement'));
 const HREmailTemplates = lazy(() => import('../pages/hr/EmailTemplates'));
 
 // Recruiter
@@ -83,7 +82,6 @@ export function AppRouter() {
             <Route path="/hr" element={<HRDashboard />} />
             <Route path="/hr/upload" element={<HRUpload />} />
             <Route path="/hr/assignment" element={<HRAssignment />} />
-            <Route path="/hr/schedule" element={<HRSchedule />} />
             <Route path="/hr/email-templates" element={<HREmailTemplates />} />
           </Route>
 
@@ -118,9 +116,10 @@ function OAuthCallback() {
     import('../services/api').then(({ default: api }) => {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       api.get('/auth/me').then((res) => {
-        const { default: authStore } = { default: require('../store/authStore') };
-        useAuthStore.getState().setAuth(res.data.data.user, token);
-        window.location.href = '/';
+        import('../store/authStore').then(({ useAuthStore }) => {
+          useAuthStore.getState().setAuth(res.data.data.user, token);
+          window.location.href = '/';
+        });
       });
     });
   }

@@ -25,7 +25,7 @@ class ConfigService {
     const configs = await this.fetchAll();
     return configs[key] !== undefined ? configs[key] : defaultValue;
   }
-  
+
   async getPlatformName() {
     return this.get('platform_name', 'AgnoHire');
   }

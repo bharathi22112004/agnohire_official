@@ -42,12 +42,12 @@ export default function EmailTemplates() {
       toast.error(`Dispatch is not supported for ${selectedTemplate.name} template.`);
       return;
     }
-    
+
     setIsDispatchModalOpen(true);
     setFetchingCandidates(true);
     setSelectedCandidateIds([]);
     setCandidateSearch('');
-    
+
     try {
       const res = await api.get(`/candidates?status=${status}&limit=1000`);
       setDispatchCandidates(res.data.data.candidates || []);
@@ -63,7 +63,7 @@ export default function EmailTemplates() {
       toast.error('Please select at least one candidate.');
       return;
     }
-    
+
     setDispatching(true);
     try {
       const res = await api.post('/candidates/bulk-email', {
@@ -90,7 +90,7 @@ export default function EmailTemplates() {
   function handleSelectAll(filtered) {
     const allFilteredIds = filtered.map(c => c.id);
     const areAllSelected = allFilteredIds.every(id => selectedCandidateIds.includes(id));
-    
+
     if (areAllSelected) {
       setSelectedCandidateIds(selectedCandidateIds.filter(id => !allFilteredIds.includes(id)));
     } else {
@@ -368,8 +368,8 @@ export default function EmailTemplates() {
                   checked={filteredCandidates.length > 0 && filteredCandidates.every(c => selectedCandidateIds.includes(c.id))}
                   ref={el => {
                     if (el) {
-                      el.indeterminate = filteredCandidates.length > 0 && 
-                        filteredCandidates.some(c => selectedCandidateIds.includes(c.id)) && 
+                      el.indeterminate = filteredCandidates.length > 0 &&
+                        filteredCandidates.some(c => selectedCandidateIds.includes(c.id)) &&
                         !filteredCandidates.every(c => selectedCandidateIds.includes(c.id));
                     }
                   }}

@@ -299,6 +299,7 @@ model Question {
   skillTags     Json     @default("[]") @map("skill_tags")
   createdBy     String?  @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at")
+  order         Int      @default(0)
 
   bank    QuestionBank      @relation(fields: [bankId], references: [id], onDelete: Cascade)
   creator User?             @relation(fields: [createdBy], references: [id])

@@ -1,6 +1,8 @@
 import { prisma } from '../configs/db.js';
 import { success, error, paginate } from '../utils/response.js';
 import { createRequire } from 'module';
+import { aiService } from '../services/ai.service.js';
+
 
 const require = createRequire(import.meta.url);
 const mammoth = require('mammoth');
@@ -63,57 +65,79 @@ export const questionsController = {
 
       // Parse the extracted text into actual questions
       const rawLines = extractedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      let parsedTexts = [];
-      let currentQ = "";
-      
+      let parsedQuestions = [];
+      let currentQText = "";
+      let currentQOrder = null;
+
       for (const line of rawLines) {
-        // A new question typically starts with a number followed by a dot or parenthesis, e.g., "1.", "1)", "Q1."
-        if (/^(Q?\d+[\.\)]|Question\s*\d+[:\.])/i.test(line)) {
-          if (currentQ) parsedTexts.push(currentQ);
-          currentQ = line.replace(/^(Q?\d+[\.\)]|Question\s*\d+[:\.])\s*/i, '');
+        const match = line.match(/^(?:Q?\s*(\d+)[\.\)]?|Question\s*(\d+)[:\.]?)\s+/i);
+        if (match) {
+          if (currentQText) {
+            parsedQuestions.push({ text: currentQText, order: currentQOrder });
+          }
+          currentQOrder = parseInt(match[1] || match[2], 10);
+          currentQText = line.replace(/^(?:Q?\s*\d+[\.\)]?|Question\s*\d+[:\.]?)\s+/i, '');
         } else {
-          currentQ = currentQ ? currentQ + "\n" + line : line;
+          currentQText = currentQText ? currentQText + "\n" + line : line;
         }
       }
-      if (currentQ) parsedTexts.push(currentQ);
+      if (currentQText) {
+        parsedQuestions.push({ text: currentQText, order: currentQOrder });
+      }
 
       // If heuristic failed to find numbered questions, fallback to question marks/keywords
-      if (parsedTexts.length <= 1) {
-        parsedTexts = rawLines.filter(line => line.endsWith('?') || /^(\*|-|•|·)?\s*(What|How|Explain|Describe|Why|Who|Where|When|List|Discuss)/i.test(line));
+      if (parsedQuestions.length === 0 || (parsedQuestions.length === 1 && parsedQuestions[0].text === "")) {
+        const fallbackLines = rawLines.filter(line => line.endsWith('?') || /^(\*|-|•|·)?\s*(What|How|Explain|Describe|Why|Who|Where|When|List|Discuss)/i.test(line));
+        parsedQuestions = fallbackLines.map((line, idx) => ({
+          text: line,
+          order: idx + 1
+        }));
       }
 
-      if (parsedTexts.length === 0) {
-        parsedTexts = ["Voice Question: Please explain the core concepts from the uploaded document."];
+      if (parsedQuestions.length === 0) {
+        parsedQuestions = [{
+          text: "Voice Question: Please explain the core concepts from the uploaded document.",
+          order: 1
+        }];
       }
 
-      const simulatedQuestions = parsedTexts.map(textBlock => {
+      // Ensure all questions have a valid incremental order
+      let nextOrder = 1;
+      parsedQuestions = parsedQuestions.map((pq, idx) => {
+        let order = pq.order;
+        if (order === null || isNaN(order)) {
+          order = nextOrder;
+        } else {
+          nextOrder = order;
+        }
+        nextOrder++;
+        return {
+          ...pq,
+          order
+        };
+      });
+
+      const simulatedQuestions = parsedQuestions.map(pq => {
+         const textBlock = pq.text;
          const isCoding = /(code|write|implement|algorithm|function|program|snippet)/i.test(textBlock);
-         
-         // Try to extract MCQ options if formatted like A) B) C) D) or A. B. C. D.
-         // We split by a newline followed by A. or A) (case insensitive)
-         const optMatch = textBlock.split(/\n?(?=[A-E][\.\)]\s+)/i);
-         let text = textBlock;
-         let options = null;
-         
-         if (optMatch.length > 2) {
-           text = optMatch[0].trim();
-           options = {};
-           for (let i = 1; i < optMatch.length; i++) {
-             const optText = optMatch[i].trim();
-             const letter = optText.charAt(0).toLowerCase();
-             // Support a, b, c, d
-             if (['a','b','c','d','e'].includes(letter)) {
-               options[letter] = optText.substring(2).trim();
-             }
-           }
-         }
 
          return {
-            text: text.substring(0, 500), // Protect against very long chunks
-            type: options ? 'mcq' : (isCoding ? 'coding' : 'text'),
+            text: textBlock.substring(0, 500), // Protect against very long chunks
+            type: isCoding ? 'coding' : 'text',
             difficulty: 'medium',
-            options: options,
+            options: isCoding ? {
+              languages: ['javascript', 'python'],
+              starters: {
+                javascript: 'function solution() {\n  // Write your code here\n}',
+                python: 'def solution():\n    # Write your code here\n    pass'
+              },
+              testCases: [
+                { input: '()', output: 'true' }
+              ]
+            } : null,
+            correctAnswer: null,
             skillTags: isCoding ? ['Coding'] : ['General'],
+            order: pq.order,
             createdBy: req.user.id
          };
       });
@@ -194,7 +218,7 @@ export const questionsController = {
           where,
           skip: (page - 1) * limit,
           take: parseInt(limit),
-          orderBy: { createdAt: 'desc' },
+          orderBy: { order: 'asc' },
         }),
         prisma.question.count({ where }),
       ]);
@@ -207,8 +231,17 @@ export const questionsController = {
 
   async createQuestion(req, res) {
     try {
+      let order = req.body.order;
+      if (order === undefined || order === null) {
+        const lastQuestion = await prisma.question.findFirst({
+          where: { bankId: req.params.bankId },
+          orderBy: { order: 'desc' }
+        });
+        order = lastQuestion ? lastQuestion.order + 1 : 1;
+      }
+
       const question = await prisma.question.create({
-        data: { ...req.body, bankId: req.params.bankId, createdBy: req.user.id },
+        data: { ...req.body, order, bankId: req.params.bankId, createdBy: req.user.id },
       });
       return success(res, { question }, 201);
     } catch (err) {
@@ -241,21 +274,17 @@ export const questionsController = {
     try {
       const { bankId, domain, difficulty, count = 5 } = req.body;
 
-      // Simulate AI generation (in production, call OpenAI/Gemini API)
-      const generated = Array.from({ length: count }, (_, i) => ({
+      const rawGenerated = await aiService.generateQuestions(domain, difficulty, count);
+      const generated = rawGenerated.map((q, i) => ({
         bankId,
-        text: `${domain} Question ${i + 1}: Explain a key concept in ${domain} at ${difficulty} level.`,
-        type: i % 2 === 0 ? 'mcq' : 'text',
-        difficulty,
-        options: i % 2 === 0 ? {
-          a: 'Option A',
-          b: 'Option B',
-          c: 'Option C',
-          d: 'Option D',
-        } : null,
-        correctAnswer: i % 2 === 0 ? 'a' : null,
-        skillTags: [domain],
+        text: q.text,
+        type: q.type || 'text',
+        difficulty: q.difficulty || difficulty,
+        options: q.options || null,
+        correctAnswer: q.correctAnswer || null,
+        skillTags: q.skillTags || [domain],
         createdBy: req.user.id,
+        order: i + 1,
       }));
 
       const questions = await prisma.question.createMany({

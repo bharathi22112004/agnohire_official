@@ -5,7 +5,7 @@ export function CandidateCard({ candidate }) {
   // Extracting details from candidate or using defaults
   const sector = candidate.sector?.name || 'Engineering';
   const experience = candidate.experience || 'Mid-Level';
-  
+
   // Map status to dot color
   const getStatusColor = (status) => {
     switch(status) {
@@ -38,7 +38,7 @@ export function CandidateCard({ candidate }) {
       <div style={{ flex: 1 }}>
         <h4 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{candidate.name}</h4>
         <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{candidate.email}</p>
-        
+
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <Badge variant="neutral" style={{ fontSize: 10, padding: '2px 6px' }}>{sector}</Badge>
           <Badge variant="brand" style={{ fontSize: 10, padding: '2px 6px' }}>{experience}</Badge>

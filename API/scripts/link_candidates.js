@@ -5,20 +5,20 @@ async function main() {
   const lists = await prisma.candidateList.findMany({
     orderBy: { uploadDate: 'asc' }
   });
-  
+
   const candidates = await prisma.candidate.findMany({
     where: { listId: null },
     orderBy: { createdAt: 'asc' }
   });
-  
+
   console.log(`Found ${lists.length} lists and ${candidates.length} unlinked candidates.`);
-  
+
   let candidateIdx = 0;
   for (const list of lists) {
     const count = list.candidateCount;
     const listCandidates = candidates.slice(candidateIdx, candidateIdx + count);
     candidateIdx += count;
-    
+
     if (listCandidates.length > 0) {
       const ids = listCandidates.map(c => c.id);
       await prisma.candidate.updateMany({

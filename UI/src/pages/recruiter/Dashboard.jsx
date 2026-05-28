@@ -78,7 +78,7 @@ export default function RecruiterDashboard() {
         {/* Candidates queue */}
         <div className="card" style={{ padding: 24 }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Active Evaluation Pipeline</h3>
-          
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
             {loading ? (
               <div className="skeleton" style={{ height: 100 }} />

@@ -147,7 +147,7 @@ export default function Analytics() {
           <Filter size={16} />
           <span>Filters:</span>
         </div>
-        
+
         <Select
           label=""
           value={selectedSector}

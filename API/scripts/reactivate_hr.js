@@ -8,7 +8,7 @@ async function main() {
 
   if (hrUser) {
     console.log("Current state:", hrUser.isActive, hrUser.deletedAt);
-    
+
     await prisma.user.update({
       where: { email: 'hr@it.agnohire.com' },
       data: {

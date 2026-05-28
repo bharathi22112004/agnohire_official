@@ -16,7 +16,7 @@ import toast from 'react-hot-toast';
 export default function RecruiterDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  
+
   const [recruiter, setRecruiter] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,8 +75,8 @@ export default function RecruiterDetails() {
 
   // Handle Search, Filter and Sorting logic
   const filteredCandidates = candidates.filter(c => {
-    const matchesSearch = 
-      c.name.toLowerCase().includes(search.toLowerCase()) || 
+    const matchesSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.email.toLowerCase().includes(search.toLowerCase()) ||
       (c.skills && JSON.stringify(c.skills).toLowerCase().includes(search.toLowerCase()));
     const matchesStatus = statusFilter ? c.status === statusFilter : true;
@@ -104,7 +104,7 @@ export default function RecruiterDetails() {
   const completedCount = candidates.filter(c => ['interviewed', 'passed', 'failed', 'held'].includes(c.status)).length;
   const passedCount = candidates.filter(c => c.status === 'passed').length;
   const scheduledCount = candidates.filter(c => c.status === 'scheduled').length;
-  
+
   const scores = candidates.filter(c => c.score !== null && c.score !== undefined).map(c => c.score);
   const avgScore = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '—';
 
@@ -134,9 +134,9 @@ export default function RecruiterDetails() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Page Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Button 
-          variant="secondary" 
-          size="sm" 
+        <Button
+          variant="secondary"
+          size="sm"
           leftIcon={<ArrowLeft size={16} />}
           onClick={() => navigate('/admin/users')}
           style={{ padding: '8px 12px', minWidth: 'auto' }}
@@ -151,10 +151,10 @@ export default function RecruiterDetails() {
       </div>
 
       {/* Recruiter Profile Details Card */}
-      <motion.div 
+      <motion.div
         className="card"
-        style={{ 
-          padding: 24, 
+        style={{
+          padding: 24,
           background: 'linear-gradient(135deg, var(--bg-card-header) 0%, var(--bg-surface) 100%)',
           border: '1px solid var(--border-color)',
           borderRadius: 16,
@@ -192,10 +192,10 @@ export default function RecruiterDetails() {
           </div>
 
           {/* Recruiter Skill Domain Badges */}
-          <div style={{ 
-            padding: 16, 
-            background: 'var(--bg-surface)', 
-            borderRadius: 12, 
+          <div style={{
+            padding: 16,
+            background: 'var(--bg-surface)',
+            borderRadius: 12,
             border: '1px solid var(--border-color)',
             minWidth: 280,
             maxWidth: 400
@@ -234,10 +234,10 @@ export default function RecruiterDetails() {
           <motion.div
             key={kpi.label}
             className="card"
-            style={{ 
-              padding: 20, 
-              display: 'flex', 
-              alignItems: 'center', 
+            style={{
+              padding: 20,
+              display: 'flex',
+              alignItems: 'center',
               gap: 16,
               border: '1px solid var(--border-color)'
             }}
@@ -272,13 +272,13 @@ export default function RecruiterDetails() {
 
       {/* Candidates List Section */}
       <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        
+
         {/* Search, Filter, Sort Toolbar */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          flexWrap: 'wrap', 
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
           gap: 12,
           borderBottom: '1px solid var(--border-color)',
           paddingBottom: 16
@@ -385,17 +385,17 @@ export default function RecruiterDetails() {
                     <td>
                       {c.score !== null && c.score !== undefined ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ 
-                            fontWeight: 800, 
+                          <span style={{
+                            fontWeight: 800,
                             color: c.score >= 80 ? '#10b981' : c.score >= 60 ? '#f59e0b' : '#f43f5e',
                             fontSize: 13
                           }}>
                             {c.score}
                           </span>
                           <div style={{ width: 60, height: 6, background: 'var(--border-color)', borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{ 
-                              width: `${c.score}%`, 
-                              height: '100%', 
+                            <div style={{
+                              width: `${c.score}%`,
+                              height: '100%',
                               background: c.score >= 80 ? '#10b981' : c.score >= 60 ? '#f59e0b' : '#f43f5e'
                             }} />
                           </div>
@@ -409,8 +409,8 @@ export default function RecruiterDetails() {
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {['interviewed', 'passed', 'failed', 'held'].includes(c.status) ? (
-                          <Button 
-                            size="xs" 
+                          <Button
+                            size="xs"
                             variant="secondary"
                             onClick={() => {
                               toast.success(`Opening AI appraisal scorecard for ${c.name}`);
@@ -420,8 +420,8 @@ export default function RecruiterDetails() {
                             Scorecard
                           </Button>
                         ) : (
-                          <Button 
-                            size="xs" 
+                          <Button
+                            size="xs"
                             variant="ghost"
                             onClick={() => {
                               toast.success(`Notifying ${c.name} for scheduling`);

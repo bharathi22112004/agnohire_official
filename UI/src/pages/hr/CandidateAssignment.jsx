@@ -13,7 +13,7 @@ export default function CandidateAssignment() {
   const [recruiters, setRecruiters] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [selectedListId, setSelectedListId] = useState('');
   const [selectedRecruiters, setSelectedRecruiters] = useState([]);
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +42,21 @@ export default function CandidateAssignment() {
       toast.error(err.response?.data?.error?.message || "Failed to delete ingestion list");
     } finally {
       setDeletingList(false);
+    }
+  }
+
+  async function handleDeleteCandidate(candidateId, candidateName) {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to permanently delete candidate "${candidateName}" from this batch?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await api.delete(`/candidates/${candidateId}`);
+      toast.success(`Candidate "${candidateName}" deleted successfully`);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.error?.message || "Failed to delete candidate");
     }
   }
 
@@ -145,9 +160,9 @@ export default function CandidateAssignment() {
               <Button
                 onClick={handleDeleteList}
                 loading={deletingList}
-                style={{ 
-                  height: 40, 
-                  background: 'var(--color-danger, #ef4444)', 
+                style={{
+                  height: 40,
+                  background: 'var(--color-danger, #ef4444)',
                   borderColor: 'var(--color-danger, #ef4444)',
                   color: '#fff',
                   display: 'flex',
@@ -191,7 +206,7 @@ export default function CandidateAssignment() {
                   <Users size={14} style={{ color: 'var(--color-brand)' }} />
                   Candidates in Batch ({listCandidates.length})
                 </div>
-                
+
                 {listCandidates.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text-muted)', fontSize: 12 }}>
                     No candidates found in this list.
@@ -216,9 +231,32 @@ export default function CandidateAssignment() {
                           <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
                           <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{c.email}</div>
                         </div>
-                        <Badge variant={c.status === 'pending' ? 'neutral' : 'success'}>
-                          {c.status.toUpperCase()}
-                        </Badge>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Badge variant={c.status === 'pending' ? 'neutral' : 'success'}>
+                            {c.status.toUpperCase()}
+                          </Badge>
+                          <button
+                            onClick={() => handleDeleteCandidate(c.id, c.name)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--color-danger, #ef4444)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '4px',
+                              borderRadius: '6px',
+                              transition: 'all 0.2s',
+                              outline: 'none'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                            onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                            title="Delete Candidate"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

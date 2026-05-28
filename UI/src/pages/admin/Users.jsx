@@ -19,14 +19,14 @@ export default function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showSkills, setShowSkills] = useState(false);
   const [selectedRecruiter, setSelectedRecruiter] = useState(null);
-  
+
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-  
+
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'hr' });
   const [creating, setCreating] = useState(false);
 
@@ -256,11 +256,11 @@ export default function UsersPage() {
             <motion.div
               key={u.id}
               className="card"
-              style={{ 
-                padding: 20, 
-                display: 'flex', 
-                flexDirection: 'column', 
-                justifyContent: 'space-between', 
+              style={{
+                padding: 20,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
                 minHeight: 180,
                 cursor: u.role?.name === 'recruiter' ? 'pointer' : 'default'
               }}
@@ -316,10 +316,10 @@ export default function UsersPage() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: 12, marginTop: 16 }}>
                 {u.role?.name === 'recruiter' ? (
-                  <Button 
-                    variant="secondary" 
-                    size="sm" 
-                    leftIcon={<Tag size={13} />} 
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Tag size={13} />}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleOpenSkills(u);
@@ -377,7 +377,7 @@ export default function UsersPage() {
               <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-primary)' }}>
                 <BookOpen size={14} style={{ color: 'var(--color-brand)' }} /> Map Recruiter Skills & Domains
               </h4>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'end' }}>
                 <Select
                   label="Domain"
@@ -390,7 +390,7 @@ export default function UsersPage() {
                     <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
                 </Select>
-                
+
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <div style={{ flex: 1 }}>
                     <Input
@@ -402,9 +402,9 @@ export default function UsersPage() {
                       helper="Comma-separated"
                     />
                   </div>
-                  <Button 
-                    type="button" 
-                    variant="secondary" 
+                  <Button
+                    type="button"
+                    variant="secondary"
                     onClick={handleAddCreateSkill}
                     style={{ height: 40, whiteSpace: 'nowrap' }}
                   >
@@ -473,7 +473,7 @@ export default function UsersPage() {
             <h4 style={{ fontSize: 13, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
               <BookOpen size={15} style={{ color: 'var(--color-brand)' }} /> Add Domain Mapping
             </h4>
-            
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <Select
                 label="Domain"
@@ -486,7 +486,7 @@ export default function UsersPage() {
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </Select>
-              
+
               <Input
                 label="Skill Tags"
                 placeholder="React, Redux, Typescript"
@@ -496,7 +496,7 @@ export default function UsersPage() {
                 helper="Comma-separated skills list"
               />
             </div>
-            
+
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button type="submit" size="sm" variant="secondary">Add Skill Map</Button>
             </div>
@@ -532,7 +532,7 @@ export default function UsersPage() {
                         ))}
                       </div>
                     </div>
-                    
+
                     <button
                       onClick={() => handleRemoveAssignedSkill(idx)}
                       className="btn btn-ghost btn-icon btn-sm"

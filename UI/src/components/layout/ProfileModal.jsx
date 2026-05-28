@@ -19,7 +19,7 @@ const AVATAR_PRESETS = [
 
 export function ProfileModal({ isOpen, onClose }) {
   const { user, updateUser } = useAuthStore();
-  
+
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +31,7 @@ export function ProfileModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (isOpen && user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(user.name || '');
       setEmail(user.email || '');
       setPassword('');
@@ -53,10 +54,10 @@ export function ProfileModal({ isOpen, onClose }) {
 
       const res = await api.put('/users/profile/update', payload);
       const updatedUser = res.data.data.user;
-      
+
       // Update local storage and global state
       updateUser(updatedUser);
-      
+
       toast.success('Profile settings saved successfully!');
       onClose();
     } catch (err) {

@@ -277,18 +277,19 @@ export const usersController = {
       let renderedBody = bodyHtml || '<p>AgnoHire Test Email Body</p>';
 
       const replacements = {
-        '{{candidateName}}': 'John Doe (Test Candidate)',
-        '{{link}}': 'https://agnohire.com/interview/test-preview-link',
-        '{{platformName}}': 'AgnoHire',
-        '{{recruiterName}}': 'Sarah Jenkins (Test Recruiter)',
-        '{{sectorName}}': 'Software Development',
-        '{{date}}': new Date().toLocaleDateString(),
-        '{{time}}': '10:00 AM'
+        'candidateName': 'John Doe (Test Candidate)',
+        'link': 'https://agnohire.com/interview/test-preview-link',
+        'platformName': 'AgnoHire',
+        'recruiterName': 'Sarah Jenkins (Test Recruiter)',
+        'sectorName': 'Software Development',
+        'date': new Date().toLocaleDateString(),
+        'time': '10:00 AM'
       };
 
       Object.entries(replacements).forEach(([key, val]) => {
-        renderedSubject = renderedSubject.replaceAll(key, val);
-        renderedBody = renderedBody.replaceAll(key, val);
+        const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
+        renderedSubject = renderedSubject.replace(regex, val);
+        renderedBody = renderedBody.replace(regex, val);
       });
 
       const dbUser = await prisma.user.findUnique({

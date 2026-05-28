@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Upload, FileText, Download, CheckCircle, AlertCircle, 
-  X, Users, Search, Trash2, Calendar, FileSpreadsheet 
+import {
+  Upload, FileText, Download, CheckCircle, AlertCircle,
+  X, Users, Search, Trash2, Calendar, FileSpreadsheet
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -55,9 +55,9 @@ export default function CandidateUpload() {
     setIsDragging(false);
     const f = e.dataTransfer.files[0];
     const isAllowed = f && (
-      f.type === 'text/csv' || 
-      f.name.endsWith('.csv') || 
-      f.name.endsWith('.xlsx') || 
+      f.type === 'text/csv' ||
+      f.name.endsWith('.csv') ||
+      f.name.endsWith('.xlsx') ||
       f.name.endsWith('.xls') ||
       f.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
@@ -78,12 +78,10 @@ export default function CandidateUpload() {
     fd.append('listName', listName);
 
     try {
-      const res = await api.post('/candidates/bulk-upload', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      
+      const res = await api.post('/candidates/bulk-upload', fd);
+
       const payload = res.data.data;
-      
+
       // Construct a new history batch object
       const newBatch = {
         id: Date.now().toString(),
@@ -104,9 +102,9 @@ export default function CandidateUpload() {
       // Reset form states
       setFile(null);
       setListName('');
-      
+
       toast.success(`Successfully imported ${payload.imported} candidates from ${file.name}`);
-      
+
       // Auto-redirect to the workload allocation (assignment) page so they can allocate workloads immediately
       setTimeout(() => {
         navigate('/hr/assignment');
@@ -275,14 +273,14 @@ export default function CandidateUpload() {
 
       {/* History & Results Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20, marginTop: 24 }}>
-        
+
         {/* Left Column: Upload History List */}
         <div className="card" style={{ padding: 20, alignSelf: 'start' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <FileSpreadsheet size={18} style={{ color: 'var(--color-primary-500)' }} />
             <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Uploaded Batches</h3>
           </div>
-          
+
           {uploadHistory.length === 0 ? (
             <div style={{ padding: '36px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
               <p style={{ fontSize: 13, margin: 0 }}>No upload history found</p>
@@ -292,8 +290,8 @@ export default function CandidateUpload() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 500, overflowY: 'auto' }}>
               {uploadHistory.map(batch => {
                 const isActive = batch.id === activeBatchId;
-                const dateStr = new Date(batch.uploadedAt).toLocaleString([], { 
-                  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                const dateStr = new Date(batch.uploadedAt).toLocaleString([], {
+                  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
                 });
                 return (
                   <div
@@ -329,7 +327,7 @@ export default function CandidateUpload() {
                         <Trash2 size={13} style={{ color: 'var(--color-danger)' }} />
                       </button>
                     </div>
-                    
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
                       <Calendar size={11} />
                       <span>{dateStr}</span>
@@ -353,8 +351,8 @@ export default function CandidateUpload() {
         {/* Right Column: Batch details & Candidate List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {activeBatch ? (
-            <motion.div 
-              className="card" 
+            <motion.div
+              className="card"
               style={{ padding: 24 }}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}

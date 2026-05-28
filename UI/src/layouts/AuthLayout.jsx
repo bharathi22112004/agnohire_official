@@ -30,10 +30,10 @@ export function AuthLayout() {
               lineHeight: 1.1,
               marginBottom: 18,
             }}>
-              AI-Powered<br />Recruitment<br />Platform
+              Recruitment<br />Platform
             </h1>
             <p style={{ color: 'rgba(255,255,255,0.78)', fontSize: 15, lineHeight: 1.8, maxWidth: 390 }}>
-              Streamline your entire hiring pipeline from candidate sourcing to AI-driven interviews and smart validation in one executive workspace.
+              Streamline your entire hiring pipeline from candidate sourcing to interactive interviews and smart validation in one executive workspace.
             </p>
           </motion.div>
 
@@ -43,7 +43,7 @@ export function AuthLayout() {
             transition={{ delay: 0.4 }}
             style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 32 }}
           >
-            {['AI Interviews', 'Smart Scoring', 'Real-time Notifs', 'Multi-role Access'].map((feat) => (
+            {['Interviews', 'Smart Scoring', 'Real-time Notifs', 'Multi-role Access'].map((feat) => (
               <span key={feat} style={{
                 background: 'rgba(255,255,255,0.13)',
                 color: 'rgba(255,255,255,0.9)',

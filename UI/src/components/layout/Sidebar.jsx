@@ -32,7 +32,6 @@ const navConfig = {
     { path: '/hr', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/hr/upload', icon: FileText, label: 'Candidate Upload' },
     { path: '/hr/assignment', icon: ClipboardList, label: 'Assignment' },
-    { path: '/hr/schedule', icon: Calendar, label: 'Schedule Management' },
     { path: '/hr/email-templates', icon: Mail, label: 'Email Templates' },
   ],
   recruiter: [

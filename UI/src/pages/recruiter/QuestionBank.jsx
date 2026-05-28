@@ -27,7 +27,11 @@ export default function RecruiterQuestionBank() {
 
   // Forms
   const [bankForm, setBankForm] = useState({ name: '', domainId: '' });
-  const [qForm, setQForm] = useState({ text: '', type: 'mcq', difficulty: 'medium', optionA: '', optionB: '', optionC: '', optionD: '', correctAnswer: 'a', skillTags: '' });
+  const [qForm, setQForm] = useState({
+    text: '', type: 'coding', difficulty: 'medium',
+    options: null,
+    correctAnswer: null, skillTags: ''
+  });
   const [aiForm, setAiForm] = useState({ difficulty: 'medium', count: 5 });
 
   const [submitting, setSubmitting] = useState(false);
@@ -95,20 +99,28 @@ export default function RecruiterQuestionBank() {
         type: qForm.type,
         difficulty: qForm.difficulty,
         skillTags: qForm.skillTags.split(',').map(s => s.trim()).filter(Boolean),
-        ...(qForm.type === 'mcq' && {
+        ...(qForm.type === 'coding' && {
           options: {
-            a: qForm.optionA,
-            b: qForm.optionB,
-            c: qForm.optionC,
-            d: qForm.optionD
+            languages: ['javascript', 'python'],
+            starters: {
+              javascript: 'function solution() {\n  // Write your code here\n}',
+              python: 'def solution():\n    # Write your code here\n    pass'
+            },
+            testCases: [
+              { input: '()', output: 'true' }
+            ]
           },
-          correctAnswer: qForm.correctAnswer
+          correctAnswer: null
         })
       };
       await api.post(`/questions/banks/${activeBank.id}/questions`, payload);
       toast.success('Question successfully mapped');
       setShowCreateQuestion(false);
-      setQForm({ text: '', type: 'mcq', difficulty: 'medium', optionA: '', optionB: '', optionC: '', optionD: '', correctAnswer: 'a', skillTags: '' });
+      setQForm({
+        text: '', type: 'coding', difficulty: 'medium',
+        options: null,
+        correctAnswer: null, skillTags: ''
+      });
       handleOpenQuestions(activeBank);
     } catch {
       toast.error('Failed to create question');
@@ -276,16 +288,16 @@ export default function RecruiterQuestionBank() {
               </div>
             ) : (
               <Reorder.Group axis="y" values={questions} onReorder={setQuestions} style={{ listStyleType: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {questions.map(q => {
+                 {questions.map((q, idx) => {
                   const diffColor = q.difficulty === 'hard' ? '#ef4444' : q.difficulty === 'easy' ? '#10b981' : '#f59e0b';
                   const diffBg = q.difficulty === 'hard' ? 'rgba(239,68,68,0.1)' : q.difficulty === 'easy' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)';
-                  
+
                   return (
                     <Reorder.Item key={q.id} value={q} style={{ border: `1px solid var(--border-color)`, borderLeft: `4px solid ${diffColor}`, borderRadius: 12, padding: 16, background: 'var(--bg-surface)', cursor: 'grab' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
                           <span style={{ cursor: 'grab', color: 'var(--text-muted)' }}>⋮⋮</span>
-                          {q.text}
+                          {q.order || (idx + 1)}. {q.text}
                         </div>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <span className="badge" style={{ background: diffBg, color: diffColor, textTransform: 'uppercase' }}>
@@ -297,18 +309,14 @@ export default function RecruiterQuestionBank() {
                         </div>
                       </div>
 
-                      {q.type === 'mcq' && q.options && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-                          {Object.entries(q.options).map(([key, val]) => (
-                            <div key={key} style={{
-                              fontSize: 12, padding: '6px 10px', borderRadius: 8,
-                              background: q.correctAnswer === key ? 'var(--bg-card-header)' : 'var(--bg-surface)',
-                              border: q.correctAnswer === key ? '1px solid var(--color-success)' : '1px solid var(--border-color)',
-                              color: q.correctAnswer === key ? 'var(--color-success)' : 'var(--text-secondary)'
-                            }}>
-                              <strong>{key.toUpperCase()}:</strong> {val}
-                            </div>
-                          ))}
+                      {q.type === 'coding' && (
+                        <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-card-header)', border: '1px dashed var(--color-primary-300)', borderRadius: 8, fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                          📄 Interactive Code Notepad Enabled (Languages: JavaScript, Python)
+                        </div>
+                      )}
+                      {q.type === 'text' && (
+                        <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-card-header)', border: '1px dashed var(--border-color)', borderRadius: 8, fontSize: 11, fontStyle: 'italic', color: 'var(--text-muted)' }}>
+                          ✍ Subjective Text Response Required (Voice to Text Enabled)
                         </div>
                       )}
 
@@ -347,8 +355,7 @@ export default function RecruiterQuestionBank() {
           <Input label="Question Wording" value={qForm.text} onChange={e => setQForm({ ...qForm, text: e.target.value })} required />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Select label="Type" value={qForm.type} onChange={e => setQForm({ ...qForm, type: e.target.value })}>
-              <option value="mcq">Multiple Choice (MCQ)</option>
-              <option value="text">Subjective Text Response</option>
+              <option value="coding">Coding Lab</option>
             </Select>
             <Select label="Difficulty" value={qForm.difficulty} onChange={e => setQForm({ ...qForm, difficulty: e.target.value })}>
               <option value="easy">Easy</option>
@@ -357,33 +364,14 @@ export default function RecruiterQuestionBank() {
             </Select>
           </div>
 
-          {qForm.type === 'mcq' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card-header)' }}>
-              <h5 style={{ fontSize: 12, fontWeight: 700, margin: '0 0 8px' }}>Multiple Choice Settings</h5>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Input label="Option A" value={qForm.optionA} onChange={e => setQForm({ ...qForm, optionA: e.target.value })} required />
-                <Input label="Option B" value={qForm.optionB} onChange={e => setQForm({ ...qForm, optionB: e.target.value })} required />
-                <Input label="Option C" value={qForm.optionC} onChange={e => setQForm({ ...qForm, optionC: e.target.value })} required />
-                <Input label="Option D" value={qForm.optionD} onChange={e => setQForm({ ...qForm, optionD: e.target.value })} required />
-              </div>
-              <Select label="Correct Option" value={qForm.correctAnswer} onChange={e => setQForm({ ...qForm, correctAnswer: e.target.value })}>
-                <option value="a">Option A</option>
-                <option value="b">Option B</option>
-                <option value="c">Option C</option>
-                <option value="d">Option D</option>
-              </Select>
-            </div>
-          )}
-
           <Input label="Skill Tags" placeholder="React, Redux, Context API" value={qForm.skillTags} onChange={e => setQForm({ ...qForm, skillTags: e.target.value })} />
         </form>
       </Modal>
 
-      {/* AI Generate Modal */}
       <Modal
         isOpen={showAIGenerate}
         onClose={() => setShowAIGenerate(false)}
-        title="AI Automation Engine"
+        title="Auto-Gen Engine"
         size="md"
         footer={
           <>
@@ -395,7 +383,7 @@ export default function RecruiterQuestionBank() {
         <form onSubmit={handleAIGenerate} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', padding: '10px 14px', borderRadius: 12, border: '1px solid var(--border-color)', background: 'var(--bg-card-header)' }}>
             <Cpu size={16} style={{ color: 'var(--color-brand)' }} />
-            <span style={{ fontSize: 13 }}>Seeding AI interview template for: <strong>{activeBank?.domain?.name}</strong></span>
+            <span style={{ fontSize: 13 }}>Seeding assessment template for: <strong>{activeBank?.domain?.name}</strong></span>
           </div>
 
           <Select label="Cognitive Difficulty" value={aiForm.difficulty} onChange={e => setAiForm({ ...aiForm, difficulty: e.target.value })}>

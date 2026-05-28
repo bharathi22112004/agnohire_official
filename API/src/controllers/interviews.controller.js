@@ -5,6 +5,8 @@ import { prisma } from '../configs/db.js';
 import { success, error, paginate } from '../utils/response.js';
 import { v4 as uuidv4 } from 'uuid';
 import { configService } from '../services/config.service.js';
+import { aiService } from '../services/ai.service.js';
+
 
 export const interviewsController = {
   async list(req, res) {
@@ -30,6 +32,31 @@ export const interviewsController = {
     try {
       const interview = await interviewRepository.findById(req.params.id);
       if (!interview) return error(res, 'Interview not found', 404, 'NOT_FOUND');
+
+      // Calculate dynamic AI scoring fields on the fly
+      const answers = interview.answers || [];
+      const totalScore = answers.reduce((sum, ans) => sum + (ans.score || 0), 0);
+      const count = answers.length;
+      const maxScore = count * 10;
+      const averageScore = count ? parseFloat((totalScore / count).toFixed(1)) : 0;
+      const autoResult = averageScore >= 6.0 ? 'pass' : 'fail';
+
+      if (interview.result) {
+        interview.result.totalScore = totalScore;
+        interview.result.maxScore = maxScore;
+        interview.result.averageScore = averageScore;
+        interview.result.autoResult = autoResult;
+      } else {
+        interview.result = {
+          interviewId: interview.id,
+          aiScore: averageScore * 10,
+          totalScore,
+          maxScore,
+          averageScore,
+          autoResult,
+        };
+      }
+
       return success(res, { interview });
     } catch (err) {
       return error(res, err.message);
@@ -94,8 +121,8 @@ export const interviewsController = {
         metadata: { interviewId: interview.id, candidateId },
       });
 
-      return success(res, { 
-        interview, 
+      return success(res, {
+        interview,
         linkToken,
         emailSent,
         emailWarning: emailError ? 'Interview scheduled, but invitation email could not be sent (check SMTP credentials).' : null
@@ -110,7 +137,7 @@ export const interviewsController = {
       const { token } = req.params;
       const schedule = await interviewRepository.findByToken(token);
       if (!schedule) return error(res, 'Invalid interview link', 404, 'NOT_FOUND');
-      
+
       const expiryHours = await configService.getInterviewTokenExpiryHours();
       const expiryTime = new Date(schedule.createdAt).getTime() + (expiryHours * 60 * 60 * 1000);
       if (Date.now() > expiryTime) {
@@ -161,7 +188,7 @@ export const interviewsController = {
             <div style="font-family: sans-serif; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 480px; margin: 0 auto;">
               <h2 style="color: #4f46e5; margin-top: 0;">Identity Verification</h2>
               <p>Hello <strong>${schedule.interview.candidate.name}</strong>,</p>
-              <p>You have requested to verify your identity to begin your AI proctored interview. Please enter the following 6-digit verification code:</p>
+              <p>You have requested to verify your identity to begin your proctored assessment. Please enter the following 6-digit verification code:</p>
               <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 32px; font-weight: 700; letter-spacing: 6px; text-align: center; padding: 16px; margin: 24px 0; color: #1e293b;">
                 ${otp}
               </div>
@@ -308,11 +335,18 @@ export const interviewsController = {
       if (!interview) return error(res, 'Interview not found', 404, 'NOT_FOUND');
 
       const domainName = interview.candidate?.domain?.name || 'General';
+      const expLevel = interview.candidate?.experienceLevel || 'mid';
+      const difficultyMap = { junior: 'easy', mid: 'medium', senior: 'hard' };
+      const targetDifficulty = difficultyMap[expLevel] || 'medium';
 
       // Load questions from database first
       const dbQuestions = await prisma.question.findMany({
         where: {
           bank: { domainId: interview.candidate.domainId || undefined },
+          difficulty: targetDifficulty,
+        },
+        orderBy: {
+          order: 'asc'
         },
         take: 12,
       });
@@ -323,11 +357,12 @@ export const interviewsController = {
         type: q.type,
         difficulty: q.difficulty,
         options: q.options,
+        order: q.order,
       }));
 
-      // Fallback: If database question bank is empty, generate dynamic enterprise assessment questions
+      // Fallback: Disabled as per strict question bank policy. Returning only database question bank entries.
       if (questions.length === 0) {
-        questions = getEnterpriseFallbackQuestions(domainName);
+        console.log(`[getQuestions] No questions found in the database question bank for domain: ${domainName}. Strictly returning empty array.`);
       }
 
       return success(res, { questions });
@@ -358,25 +393,14 @@ export const interviewsController = {
       const { id } = req.params;
       const { answers } = req.body; // [{ questionId, answerText, timeTaken }]
 
-      // Fetch the interview to get candidate details and fallback domain questions
-      const interviewRecord = await prisma.interview.findUnique({
-        where: { id },
-        include: { candidate: { include: { domain: true } } },
-      });
-      const domainName = interviewRecord?.candidate?.domain?.name || 'General';
-      const fallbackQuestions = getEnterpriseFallbackQuestions(domainName);
-
       // Fetch database questions matching submitted answers
       const questionIds = answers.map((a) => a.questionId);
       const dbQuestions = await prisma.question.findMany({
         where: { id: { in: questionIds } },
       });
 
-      // Build quick lookup map for all possible questions
+      // Build quick lookup map for database questions only
       const questionsMap = {};
-      fallbackQuestions.forEach((fq) => {
-        questionsMap[fq.id] = fq;
-      });
       dbQuestions.forEach((dbQ) => {
         questionsMap[dbQ.id] = dbQ;
       });
@@ -422,12 +446,9 @@ export const interviewsController = {
       });
 
       // Calculate overall candidate AI assessment score
-      const aiEnabled = await configService.isAiScoringEnabled();
-      let aiScore = 0;
-      if (aiEnabled) {
-        const totalScore = gradedAnswers.reduce((acc, a) => acc + (a.score || 0), 0);
-        aiScore = gradedAnswers.length ? totalScore / gradedAnswers.length : 0;
-      }
+      const totalScore = gradedAnswers.reduce((acc, a) => acc + (a.score || 0), 0);
+      const averageScore = gradedAnswers.length ? (totalScore / gradedAnswers.length) : 0;
+      const aiScore = parseFloat((averageScore * 10).toFixed(1)); // Store as percentage (0-100)
 
       // Update interview status and save result record
       const interview = await interviewRepository.update(id, {
@@ -603,149 +624,7 @@ export const interviewsController = {
 };
 
 async function evaluateAnswerWithAi(questionText, answerText, questionType) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.log('[Grading] GEMINI_API_KEY is not configured. Falling back to local semantic grading.');
-    return performLocalSemanticGrading(questionText, answerText, questionType);
-  }
-
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-    
-    const prompt = `
-You are an expert AI technical interviewer and evaluator. Your task is to evaluate a candidate's answer for the following question.
-
-Question Category/Type: ${questionType}
-Question:
-"${questionText}"
-
-Candidate's Answer (Speech Transcript or Code submission):
-"${answerText}"
-
-Grade the candidate's answer on a scale from 0 to 10 (inclusive) based on correctness, completeness, and relevance.
-- Provide a score from 0 to 10 (as an integer).
-- Provide a brief constructive reason/explanation for the score.
-
-You MUST respond strictly in the following JSON format:
-{
-  "score": <number_from_0_to_10>,
-  "reason": "<explanation_text>"
-}
-    `;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API returned status ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!responseText) {
-      throw new Error('Empty response from Gemini API');
-    }
-
-    const parsed = JSON.parse(responseText.trim());
-    const score = parseInt(parsed.score);
-    if (isNaN(score)) {
-      throw new Error('Parsed score is not a number');
-    }
-    
-    return Math.max(0, Math.min(10, score));
-  } catch (err) {
-    console.error('[Grading] AI evaluation failed:', err.message, 'Falling back to local semantic grading.');
-    return performLocalSemanticGrading(questionText, answerText, questionType);
-  }
-}
-
-function performLocalSemanticGrading(questionText, answerText, questionType) {
-  if (!answerText || answerText.trim() === '') return 0;
-
-  const cleanAns = answerText.toLowerCase().trim();
-  const cleanQuest = questionText.toLowerCase().trim();
-  const words = cleanAns.split(/\s+/).filter(Boolean);
-
-  if (words.length < 3) return 1;
-
-  let score = 3;
-
-  if (questionType === 'coding') {
-    const codeKeywords = ['function', 'def', 'return', 'const', 'let', 'var', 'for', 'while', 'if', 'else', 'class', 'import', 'include', 'std', 'vector', 'string'];
-    let matches = 0;
-    codeKeywords.forEach(kw => {
-      if (cleanAns.includes(kw)) matches++;
-    });
-
-    if (matches > 4) score += 4;
-    else if (matches > 2) score += 2;
-
-    if (cleanQuest.includes('reverse') && (cleanAns.includes('split') || cleanAns.includes('reverse') || cleanAns.includes('join') || cleanAns.includes('[::-1]'))) {
-      score += 3;
-    }
-    if (cleanQuest.includes('two sum') && (cleanAns.includes('map') || cleanAns.includes('index') || cleanAns.includes('target') || cleanAns.includes('sum') || cleanAns.includes('hash'))) {
-      score += 3;
-    }
-    if (cleanQuest.includes('median') && (cleanAns.includes('sort') || cleanAns.includes('length') || cleanAns.includes('math.floor') || cleanAns.includes('len('))) {
-      score += 3;
-    }
-    if (cleanQuest.includes('fizzbuzz') && (cleanAns.includes('% 3') || cleanAns.includes('% 5') || cleanAns.includes('fizz') || cleanAns.includes('buzz'))) {
-      score += 3;
-    }
-  } else {
-    if (words.length > 50) score += 3;
-    else if (words.length > 20) score += 2;
-    else if (words.length > 8) score += 1;
-
-    if (cleanQuest.includes('virtual dom') || cleanQuest.includes('reconciliation')) {
-      const keywords = ['diff', 'virtual', 'reconciliation', 'render', 'update', 'batch', 'performance', 'real dom', 'ui', 'components'];
-      keywords.forEach(kw => {
-        if (cleanAns.includes(kw)) score += 0.7;
-      });
-    }
-
-    if (cleanQuest.includes('regularization') || cleanQuest.includes('l1') || cleanQuest.includes('l2')) {
-      const keywords = ['overfitting', 'lasso', 'ridge', 'sparsity', 'absolute', 'squared', 'penalty', 'weights', 'l1', 'l2'];
-      keywords.forEach(kw => {
-        if (cleanAns.includes(kw)) score += 0.7;
-      });
-    }
-
-    if (cleanQuest.includes('event loop') || cleanQuest.includes('asynchronous')) {
-      const keywords = ['call stack', 'callback', 'queue', 'non-blocking', 'single-thread', 'io', 'libuv', 'microtask', 'macrotask', 'promise'];
-      keywords.forEach(kw => {
-        if (cleanAns.includes(kw)) score += 0.7;
-      });
-    }
-
-    if (cleanQuest.includes('index') || cleanQuest.includes('database')) {
-      const keywords = ['b-tree', 'lookup', 'speed', 'query', 'scan', 'performance', 'primary key', 'pointer', 'search'];
-      keywords.forEach(kw => {
-        if (cleanAns.includes(kw)) score += 0.7;
-      });
-    }
-  }
-
-  return Math.max(0, Math.min(10, Math.round(score)));
+  return await aiService.evaluateAnswer(questionText, answerText, questionType);
 }
 
 function computeBasicScore(answerText) {
@@ -757,7 +636,6 @@ function computeBasicScore(answerText) {
   return 2;
 }
 
-
 function getEnterpriseFallbackQuestions(domainName) {
   const isFrontend = /react|frontend|javascript|js|ui|web/i.test(domainName);
   const isAiMl = /ai|ml|machine|learning|nlp|vision/i.test(domainName);
@@ -766,44 +644,26 @@ function getEnterpriseFallbackQuestions(domainName) {
     return [
       {
         id: 'apt-1',
-        text: 'A car completes a journey in 6 hours. It covers half the distance at 40 km/h and the rest at 60 km/h. What is the total distance covered?',
-        type: 'mcq',
+        text: 'A car completes a journey in 6 hours. It covers half the distance at 40 km/h and the rest at 60 km/h. Find the total distance covered and show your step-by-step mathematical logic.',
+        type: 'text',
         difficulty: 'medium',
-        options: {
-          a: '288 km',
-          b: '300 km',
-          c: '240 km',
-          d: '320 km'
-        },
-        correctAnswer: 'a',
+        options: null,
         section: 'Aptitude'
       },
       {
         id: 'apt-2',
-        text: 'Identify the next term in the logical sequence: 3, 7, 15, 31, 63, ...',
-        type: 'mcq',
+        text: 'Identify the next term in the logical sequence: 3, 7, 15, 31, 63, ... and explain the underlying numeric formula.',
+        type: 'text',
         difficulty: 'easy',
-        options: {
-          a: '95',
-          b: '127',
-          c: '128',
-          d: '112'
-        },
-        correctAnswer: 'b',
+        options: null,
         section: 'Aptitude'
       },
       {
         id: 'tech-1',
-        text: 'Which of the following is true about React state updates?',
-        type: 'mcq',
+        text: 'Explain whether React state updates are synchronous or asynchronous. What is state batching, and how does it optimize component re-rendering cycles?',
+        type: 'text',
         difficulty: 'medium',
-        options: {
-          a: 'They are synchronous and immediate',
-          b: 'They are batched and asynchronous',
-          c: 'They directly mutate the DOM',
-          d: 'They can only be called from helper loops'
-        },
-        correctAnswer: 'b',
+        options: null,
         section: 'Technical'
       },
       {
@@ -857,30 +717,18 @@ function getEnterpriseFallbackQuestions(domainName) {
     return [
       {
         id: 'apt-1',
-        text: 'A bag contains 5 red balls and 4 green balls. If 2 balls are drawn at random, what is the probability that one is red and one is green?',
-        type: 'mcq',
+        text: 'A bag contains 5 red balls and 4 green balls. If 2 balls are drawn at random, what is the probability that one is red and one is green? Explain your mathematical reasoning.',
+        type: 'text',
         difficulty: 'medium',
-        options: {
-          a: '5/9',
-          b: '5/18',
-          c: '20/36',
-          d: '5/12'
-        },
-        correctAnswer: 'c',
+        options: null,
         section: 'Aptitude'
       },
       {
         id: 'tech-1',
-        text: 'Which of the following techniques is commonly used to prevent overfitting in Deep Neural Networks?',
-        type: 'mcq',
+        text: 'What is the purpose of Dropout in Deep Neural Networks and how does it prevent overfitting? Detail the difference in how dropout behaves during training versus inference.',
+        type: 'text',
         difficulty: 'easy',
-        options: {
-          a: 'Adding more layers',
-          b: 'Dropout',
-          c: 'Increasing learning rate',
-          d: 'Minimizing activation thresholds'
-        },
-        correctAnswer: 'b',
+        options: null,
         section: 'Technical'
       },
       {
@@ -914,30 +762,18 @@ function getEnterpriseFallbackQuestions(domainName) {
     return [
       {
         id: 'apt-1',
-        text: 'A boat moves downstream at 15 km/h and upstream at 9 km/h. Find the speed of the boat in still water.',
-        type: 'mcq',
+        text: 'A boat moves downstream at 15 km/h and upstream at 9 km/h. Find the speed of the boat in still water and show your calculation steps.',
+        type: 'text',
         difficulty: 'easy',
-        options: {
-          a: '12 km/h',
-          b: '10.5 km/h',
-          c: '11.5 km/h',
-          d: '13 km/h'
-        },
-        correctAnswer: 'a',
+        options: null,
         section: 'Aptitude'
       },
       {
         id: 'tech-1',
-        text: 'What is the purpose of an INDEX in a relational database like PostgreSQL?',
-        type: 'mcq',
+        text: 'What is the purpose of an INDEX in a relational database like PostgreSQL? Explain how it speeds up query operations and describe the potential trade-offs during database writes (INSERT/UPDATE).',
+        type: 'text',
         difficulty: 'easy',
-        options: {
-          a: 'To secure records from write updates',
-          b: 'To speed up data retrieval querying operations',
-          c: 'To automatically normalization keys',
-          d: 'To save physical hardware storage space'
-        },
-        correctAnswer: 'b',
+        options: null,
         section: 'Technical'
       },
       {

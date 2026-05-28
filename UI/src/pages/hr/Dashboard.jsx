@@ -42,7 +42,6 @@ export default function HRDashboard() {
   const quickLinks = [
     { title: 'Bulk Import Candidates', desc: 'Onboard candidates using CSV sheets', to: '/hr/upload', btn: 'Upload CSV' },
     { title: 'Allocate Workload', desc: 'Equally distribute candidates among recruiters', to: '/hr/assignment', btn: 'Go to Assignment' },
-    { title: 'Schedule & Actions', desc: 'Track recruiter schedules and edit details', to: '/hr/schedule', btn: 'View Schedules' },
     { title: 'Transactional Emails', desc: 'Customize invite, pass, fail, hold templates', to: '/hr/email-templates', btn: 'Edit Templates' }
   ];
 
@@ -92,7 +91,7 @@ export default function HRDashboard() {
               <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>{link.title}</h4>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>{link.desc}</p>
             </div>
-            
+
             <div style={{ marginTop: 16 }}>
               <Link to={link.to}>
                 <Button size="sm" variant="secondary" rightIcon={<ArrowRight size={13} style={{ marginLeft: 4 }} />}>

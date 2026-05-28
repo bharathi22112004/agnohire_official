@@ -73,7 +73,7 @@ export const useThemeStore = create(
       initTheme: () => {
         const state = get();
         document.documentElement.classList.toggle('dark', state.theme === 'dark');
-        
+
         if (state.themeColor && state.themeColor !== '#3B82F6') {
           document.documentElement.style.setProperty('--color-primary-500', state.themeColor);
           document.documentElement.style.setProperty('--color-brand', state.themeColor);

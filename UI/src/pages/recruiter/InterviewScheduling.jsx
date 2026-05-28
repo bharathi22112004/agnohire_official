@@ -101,7 +101,7 @@ export default function InterviewScheduling() {
         <div>
           <h1 className="page-title">Interview Scheduling</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>
-            Schedule AI interviews for assigned candidates
+            Schedule assessment interviews for assigned candidates
           </p>
         </div>
         {selectedCandidates.length > 0 && (

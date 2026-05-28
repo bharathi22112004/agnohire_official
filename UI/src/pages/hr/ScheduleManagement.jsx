@@ -89,9 +89,7 @@ export default function ScheduleManagement() {
     fd.append('resume', file);
 
     try {
-      await api.post(`/candidates/${activeCandidate.id}/resume`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await api.post(`/candidates/${activeCandidate.id}/resume`, fd);
       toast.success('Resume uploaded successfully');
       // Reload candidate detail
       handleOpenDetail(activeCandidate);
@@ -143,10 +141,10 @@ export default function ScheduleManagement() {
   const filtered = candidates.filter(c => {
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter ? c.status === statusFilter : true;
-    
+
     const assignedRecruiter = c.assignments?.[0]?.recruiter;
     const matchesRecruiter = recruiterFilter ? assignedRecruiter?.id === recruiterFilter : true;
-    
+
     return matchesSearch && matchesStatus && matchesRecruiter;
   });
 
@@ -182,7 +180,7 @@ export default function ScheduleManagement() {
           onChange={e => setSearch(e.target.value)}
           style={{ maxWidth: 300, marginBottom: 0 }}
         />
-        
+
         <Select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}

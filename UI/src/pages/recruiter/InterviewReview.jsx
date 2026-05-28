@@ -14,17 +14,13 @@ export default function InterviewReview() {
   const [interviews, setInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedInterview, setSelectedInterview] = useState(null);
-  
+
   const [feedback, setFeedback] = useState('');
   const [decision, setDecision] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [playingAudio, setPlayingAudio] = useState(null);
 
   const user = useAuthStore(state => state.user);
-
-  useEffect(() => {
-    loadData();
-  }, [user.id]);
 
   async function loadData() {
     try {
@@ -41,13 +37,23 @@ export default function InterviewReview() {
     }
   }
 
+  useEffect(() => {
+    loadData();
+  }, [user.id]);
+
   async function handleSelectInterview(id) {
     try {
       const res = await api.get(`/interviews/${id}`);
       const iv = res.data.data.interview;
       setSelectedInterview(iv);
       setFeedback(iv.result?.feedback || '');
-      setDecision(iv.result?.recruiterDecision || '');
+
+      const answers = iv.answers || [];
+      const totalScore = answers.reduce((sum, ans) => sum + (ans.score || 0), 0);
+      const averageScore = answers.length ? (totalScore / answers.length) : 0;
+      const autoDecision = averageScore >= 6.0 ? 'pass' : 'fail';
+
+      setDecision(iv.result?.recruiterDecision || autoDecision);
     } catch {
       toast.error('Failed to fetch full interview transcript');
     }
@@ -109,7 +115,7 @@ export default function InterviewReview() {
           <h3 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 8px', color: 'var(--text-muted)' }}>
             Evaluation Pipeline ({interviews.length})
           </h3>
-          
+
           {interviews.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 24, fontSize: 12, color: 'var(--text-muted)' }}>
               No completed interviews awaiting review.
@@ -140,7 +146,7 @@ export default function InterviewReview() {
                     </span>
                   </div>
                   <div style={{ fontSize: 11, opacity: 0.8, display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                    <span>{iv.candidate.domain?.name}</span>
+                    <span>{iv.candidate.domain?.name || iv.candidate.domain || 'Unassigned'}</span>
                     <span style={{ fontSize: 10 }}>{iv.status.toUpperCase()}</span>
                   </div>
                 </button>
@@ -162,7 +168,7 @@ export default function InterviewReview() {
                 <div>
                   <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>{selectedInterview.candidate.name}</h2>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                    Assigned Domain: <strong>{selectedInterview.candidate.domain?.name}</strong> • Completed: {selectedInterview.completedAt ? new Date(selectedInterview.completedAt).toLocaleDateString() : 'Pending'}
+                    Assigned Domain: <strong>{selectedInterview.candidate.domain?.name || selectedInterview.candidate.domain || interviews.find(i => i.id === selectedInterview.id)?.candidate?.domain?.name || interviews.find(i => i.id === selectedInterview.id)?.candidate?.domain || 'Unassigned'}</strong> • <span style={{ color: selectedInterview.completedAt ? 'var(--color-success)' : 'inherit', fontWeight: selectedInterview.completedAt ? 600 : 'normal' }}>Completed: {selectedInterview.completedAt ? new Date(selectedInterview.completedAt).toLocaleDateString() : 'Pending'}</span>
                   </div>
                 </div>
 
@@ -179,45 +185,137 @@ export default function InterviewReview() {
               {/* Interview Timeline Step-Indicator */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
                 {['scheduled', 'in_progress', 'completed', 'validated'].map((step, idx, arr) => {
-                  const statusMap = {
-                    scheduled: ['scheduled', 'interviewed', 'passed', 'failed', 'held'],
-                    in_progress: ['interviewed', 'passed', 'failed', 'held'],
-                    completed: ['interviewed', 'passed', 'failed', 'held'],
-                    validated: ['passed', 'failed', 'held'] // If recruiter has submitted decision
-                  };
+                  const cStatus = selectedInterview.status?.toLowerCase() || '';
+                  const stepIndex = ['scheduled', 'in_progress', 'completed', 'validated'].indexOf(step);
                   
-                  // For demo, checking status. A real implementation might use history timestamps.
-                  const cStatus = selectedInterview.status; 
-                  const isCompleted = statusMap[step].includes(cStatus);
-                  const isCurrent = (step === 'scheduled' && cStatus === 'scheduled') ||
-                                    (step === 'in_progress' && cStatus === 'pending') ||
-                                    (step === 'completed' && cStatus === 'interviewed') ||
-                                    (step === 'validated' && ['passed', 'failed', 'held'].includes(cStatus));
+                  let currentStepIndex = 0;
+                  if (['passed', 'failed', 'held', 'validated'].includes(cStatus)) currentStepIndex = 3;
+                  else if (cStatus === 'completed' || cStatus === 'interviewed') currentStepIndex = 2;
+                  else if (cStatus === 'in_progress' || cStatus === 'pending') currentStepIndex = 1;
+                  else currentStepIndex = 0; // scheduled or unknown
                   
+                  const isCompleted = currentStepIndex > stepIndex;
+                  const isCurrent = currentStepIndex === stepIndex;
+
                   return (
                     <div key={step} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 1 }}>
                         <div style={{
                           width: 24, height: 24, borderRadius: '50%',
-                          background: isCompleted || isCurrent ? 'var(--color-primary-500)' : 'var(--bg-surface-3)',
+                          background: isCompleted ? 'var(--color-success)' : isCurrent ? 'var(--color-primary-500)' : 'var(--bg-surface-3)',
                           border: isCurrent ? '3px solid var(--color-primary-200)' : 'none',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: 'white'
+                          color: 'white',
+                          boxShadow: isCompleted ? '0 0 10px rgba(16, 185, 129, 0.4)' : 'none'
                         }}>
-                          {isCompleted ? <CheckCircle size={12} /> : <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />}
+                          {isCompleted ? <CheckCircle size={12} strokeWidth={3} /> : <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />}
                         </div>
-                        <span style={{ fontSize: 11, fontWeight: isCurrent ? 700 : 500, color: isCurrent || isCompleted ? 'var(--text-primary)' : 'var(--text-muted)', textTransform: 'capitalize' }}>
+                        <span style={{ fontSize: 11, fontWeight: isCurrent ? 700 : 500, color: isCompleted ? 'var(--color-success)' : isCurrent ? 'var(--text-primary)' : 'var(--text-muted)', textTransform: 'capitalize' }}>
                           {step.replace('_', ' ')}
                         </span>
                       </div>
                       {idx < arr.length - 1 && (
-                        <div style={{ flex: 1, height: 2, background: isCompleted ? 'var(--color-primary-500)' : 'var(--bg-surface-3)', margin: '0 8px', transform: 'translateY(-12px)' }} />
+                        <div style={{ flex: 1, height: 2, background: currentStepIndex > idx ? 'var(--color-success)' : 'var(--bg-surface-3)', margin: '0 8px', transform: 'translateY(-12px)' }} />
                       )}
                     </div>
                   );
                 })}
               </div>
             </div>
+
+            {/* AI Scorecard Dashboard */}
+            {(() => {
+              const answersList = selectedInterview.answers || [];
+              const totalPoints = answersList.reduce((sum, ans) => sum + (ans.score || 0), 0);
+              const maxPoints = answersList.length * 10;
+              const averageRating = answersList.length ? parseFloat((totalPoints / answersList.length).toFixed(1)) : 0;
+              const recommendedResult = averageRating >= 6.0 ? 'pass' : 'fail';
+
+              return (
+                <div className="card" style={{
+                  padding: 24,
+                  background: 'linear-gradient(135deg, var(--bg-surface) 0%, rgba(99, 102, 241, 0.03) 100%)',
+                  border: '1px solid rgba(99, 102, 241, 0.15)',
+                  borderRadius: 16,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 16
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)' }}>
+                      <Award size={18} style={{ color: 'var(--color-brand)' }} /> AI Grading Scorecard
+                    </h3>
+                    <Badge variant={recommendedResult === 'pass' ? 'success' : 'danger'} style={{ fontSize: 12, padding: '6px 12px', borderRadius: 8 }}>
+                      AI Recommendation: {recommendedResult.toUpperCase()}
+                    </Badge>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+                    {/* Total Score */}
+                    <div style={{
+                      padding: 16,
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 12,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6
+                    }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>TOTAL POINTS</span>
+                      <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {totalPoints} <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}>/ {maxPoints}</span>
+                      </span>
+                    </div>
+
+                    {/* Average Rating */}
+                    <div style={{
+                      padding: 16,
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 12,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6
+                    }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>AVERAGE RATING</span>
+                      <span style={{ fontSize: 24, fontWeight: 800, color: 'var(--color-brand)' }}>
+                        {averageRating.toFixed(1)} <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-muted)' }}>/ 10</span>
+                      </span>
+                    </div>
+
+                    {/* Outcome Status */}
+                    <div style={{
+                      padding: 16,
+                      background: 'var(--bg-surface-2)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 12,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6
+                    }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>RECOMMENDED DECISION</span>
+                      <span style={{
+                        fontSize: 18,
+                        fontWeight: 800,
+                        color: recommendedResult === 'pass' ? 'var(--color-success)' : 'var(--color-danger)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}>
+                        {recommendedResult === 'pass' ? <CheckCircle size={16} /> : <XCircle size={16} />}
+                        {recommendedResult === 'pass' ? 'PASS' : 'FAIL'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* AI Analytical reports */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -290,7 +388,7 @@ export default function InterviewReview() {
                         >
                           {playingAudio === idx ? 'Playing...' : 'Play Audio'}
                         </Button>
-                        
+
                         {playingAudio === idx && (
                           <div style={{ display: 'flex', gap: 2, alignItems: 'center', height: 16 }}>
                             {[1, 2, 3, 4, 5, 4, 3, 2, 1, 2, 3, 4].map((h, i) => (

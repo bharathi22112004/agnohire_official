@@ -70,7 +70,7 @@ async function main() {
 
   // 5. Create secure Schedule link token
   const token = 'test-token-123456';
-  
+
   await prisma.interviewSchedule.upsert({
     where: { linkToken: token },
     update: {},

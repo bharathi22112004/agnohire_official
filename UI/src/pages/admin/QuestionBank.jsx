@@ -28,10 +28,10 @@ export default function QuestionBank() {
 
   // Forms
   const [bankForm, setBankForm] = useState({ name: '', domainId: '', recruiterId: '', file: null });
-  const [qForm, setQForm] = useState({ 
-    text: '', type: 'mcq', difficulty: 'medium', 
-    options: [{ id: 'a', text: '' }, { id: 'b', text: '' }, { id: 'c', text: '' }, { id: 'd', text: '' }],
-    correctAnswer: 'a', skillTags: '' 
+  const [qForm, setQForm] = useState({
+    text: '', type: 'coding', difficulty: 'medium',
+    options: null,
+    correctAnswer: null, skillTags: ''
   });
   const [aiForm, setAiForm] = useState({ difficulty: 'medium', count: 5 });
   const [activeTab, setActiveTab] = useState('upload'); // 'upload' or 'manual'
@@ -72,9 +72,7 @@ export default function QuestionBank() {
         if (bankForm.domainId) formData.append('domainId', bankForm.domainId);
         formData.append('file', bankForm.file);
 
-        await api.post('/questions/banks/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        await api.post('/questions/banks/upload', formData);
         toast.success('Document parsed and Question Bank created');
       } else {
         await api.post('/questions/banks', {
@@ -84,7 +82,7 @@ export default function QuestionBank() {
         });
         toast.success('Empty Question Bank created');
       }
-      
+
       setShowCreateBank(false);
       setBankForm({ name: '', domainId: '', recruiterId: '', file: null });
       setActiveTab('upload');
@@ -119,21 +117,27 @@ export default function QuestionBank() {
         type: qForm.type,
         difficulty: qForm.difficulty,
         skillTags: qForm.skillTags.split(',').map(s => s.trim()).filter(Boolean),
-        ...(qForm.type === 'mcq' && {
-          options: qForm.options.reduce((acc, opt) => {
-            if (opt.text.trim()) acc[opt.id] = opt.text.trim();
-            return acc;
-          }, {}),
-          correctAnswer: qForm.correctAnswer
+        ...(qForm.type === 'coding' && {
+          options: {
+            languages: ['javascript', 'python'],
+            starters: {
+              javascript: 'function solution() {\n  // Write your code here\n}',
+              python: 'def solution():\n    # Write your code here\n    pass'
+            },
+            testCases: [
+              { input: '()', output: 'true' }
+            ]
+          },
+          correctAnswer: null
         })
       };
       await api.post(`/questions/banks/${activeBank.id}/questions`, payload);
       toast.success('Question added successfully');
       setShowCreateQuestion(false);
-      setQForm({ 
-        text: '', type: 'mcq', difficulty: 'medium', 
-        options: [{ id: 'a', text: '' }, { id: 'b', text: '' }, { id: 'c', text: '' }, { id: 'd', text: '' }],
-        correctAnswer: 'a', skillTags: '' 
+      setQForm({
+        text: '', type: 'coding', difficulty: 'medium',
+        options: null,
+        correctAnswer: null, skillTags: ''
       });
       // Reload questions
       handleOpenQuestions(activeBank);
@@ -229,9 +233,9 @@ export default function QuestionBank() {
                         <Cpu size={11} style={{ marginRight: 4 }} /> AI SEEDED
                       </Badge>
                     )}
-                    <button 
-                      onClick={() => handleDeleteBank(bank.id)} 
-                      className="btn btn-ghost btn-sm btn-icon" 
+                    <button
+                      onClick={() => handleDeleteBank(bank.id)}
+                      className="btn btn-ghost btn-sm btn-icon"
                       style={{ color: 'var(--color-danger)', padding: 4 }}
                       title="Delete Question Bank"
                     >
@@ -282,14 +286,14 @@ export default function QuestionBank() {
         }
       >
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '1px solid var(--border-color)', paddingBottom: 12 }}>
-          <button 
+          <button
             type="button"
             onClick={() => setActiveTab('upload')}
             className={`btn btn-sm ${activeTab === 'upload' ? 'btn-primary' : 'btn-ghost'}`}
           >
             <FileText size={14} style={{ marginRight: 6 }} /> Document Upload
           </button>
-          <button 
+          <button
             type="button"
             onClick={() => setActiveTab('manual')}
             className={`btn btn-sm ${activeTab === 'manual' ? 'btn-primary' : 'btn-ghost'}`}
@@ -324,7 +328,7 @@ export default function QuestionBank() {
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
                 Upload Assessment Document (PDF or Word)
               </label>
-              <div 
+              <div
                 style={{
                   border: '2px dashed var(--color-primary-300)',
                   borderRadius: 12,
@@ -417,10 +421,10 @@ export default function QuestionBank() {
                 No questions exist inside this template bank
               </div>
             ) : (
-              questions.map(q => (
+              questions.map((q, idx) => (
                 <div key={q.id} style={{ border: '1px solid var(--border-color)', borderRadius: 12, padding: 16, background: 'var(--bg-surface)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{q.text}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{q.order || (idx + 1)}. {q.text}</div>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <Badge variant={q.difficulty === 'hard' ? 'danger' : q.difficulty === 'easy' ? 'success' : 'warning'}>
                         {q.difficulty.toUpperCase()}
@@ -431,18 +435,14 @@ export default function QuestionBank() {
                     </div>
                   </div>
 
-                  {q.type === 'mcq' && q.options && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-                      {Object.entries(q.options).map(([key, val]) => (
-                        <div key={key} style={{
-                          fontSize: 12, padding: '6px 10px', borderRadius: 8,
-                          background: q.correctAnswer === key ? 'var(--bg-card-header)' : 'var(--bg-surface)',
-                          border: q.correctAnswer === key ? '1px solid var(--color-success)' : '1px solid var(--border-color)',
-                          color: q.correctAnswer === key ? 'var(--color-success)' : 'var(--text-secondary)'
-                        }}>
-                          <strong>{key.toUpperCase()}:</strong> {val}
-                        </div>
-                      ))}
+                  {q.type === 'coding' && (
+                    <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-card-header)', border: '1px dashed var(--color-primary-300)', borderRadius: 8, fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                      📄 Interactive Code Notepad Enabled (Languages: JavaScript, Python)
+                    </div>
+                  )}
+                  {q.type === 'text' && (
+                    <div style={{ marginTop: 12, padding: 10, background: 'var(--bg-card-header)', border: '1px dashed var(--border-color)', borderRadius: 8, fontSize: 11, fontStyle: 'italic', color: 'var(--text-muted)' }}>
+                      ✍ Subjective Text Response Required (Voice to Text Enabled)
                     </div>
                   )}
 
@@ -479,8 +479,7 @@ export default function QuestionBank() {
           <Input label="Question Wording" value={qForm.text} onChange={e => setQForm({ ...qForm, text: e.target.value })} required />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Select label="Type" value={qForm.type} onChange={e => setQForm({ ...qForm, type: e.target.value })}>
-              <option value="mcq">Multiple Choice (MCQ)</option>
-              <option value="text">Subjective Text Response</option>
+              <option value="coding">Coding Lab</option>
             </Select>
             <Select label="Difficulty" value={qForm.difficulty} onChange={e => setQForm({ ...qForm, difficulty: e.target.value })}>
               <option value="easy">Easy</option>
@@ -489,71 +488,14 @@ export default function QuestionBank() {
             </Select>
           </div>
 
-          {qForm.type === 'mcq' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card-header)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <h5 style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>Multiple Choice Settings</h5>
-                {qForm.options.length < 6 && (
-                  <Button size="sm" variant="ghost" type="button" onClick={() => {
-                    const nextId = String.fromCharCode(97 + qForm.options.length); // a, b, c...
-                    setQForm({ ...qForm, options: [...qForm.options, { id: nextId, text: '' }] });
-                  }}>+ Add Option</Button>
-                )}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {qForm.options.map((opt, idx) => (
-                  <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Input 
-                      label={`Option ${opt.id.toUpperCase()}`} 
-                      value={opt.text} 
-                      onChange={e => {
-                        const newOptions = [...qForm.options];
-                        newOptions[idx].text = e.target.value;
-                        setQForm({ ...qForm, options: newOptions });
-                      }} 
-                      required 
-                      style={{ flex: 1 }}
-                    />
-                    {qForm.options.length > 2 && (
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          const newOptions = qForm.options.filter(o => o.id !== opt.id);
-                          // Re-assign IDs to be contiguous a, b, c...
-                          const remapped = newOptions.map((o, i) => ({ ...o, id: String.fromCharCode(97 + i) }));
-                          setQForm({ 
-                            ...qForm, 
-                            options: remapped,
-                            correctAnswer: remapped.some(o => o.id === qForm.correctAnswer) ? qForm.correctAnswer : remapped[0].id
-                          });
-                        }} 
-                        className="btn btn-ghost btn-icon btn-sm" 
-                        style={{ color: 'var(--color-danger)', marginTop: 22 }}
-                        title="Remove Option"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <Select label="Correct Option" value={qForm.correctAnswer} onChange={e => setQForm({ ...qForm, correctAnswer: e.target.value })}>
-                {qForm.options.map(opt => (
-                  <option key={opt.id} value={opt.id}>Option {opt.id.toUpperCase()}</option>
-                ))}
-              </Select>
-            </div>
-          )}
-
           <Input label="Skill Tags" placeholder="Node.js, Express, Middleware" value={qForm.skillTags} onChange={e => setQForm({ ...qForm, skillTags: e.target.value })} />
         </form>
       </Modal>
 
-      {/* AI Generate Modal */}
       <Modal
         isOpen={showAIGenerate}
         onClose={() => setShowAIGenerate(false)}
-        title="AI Automation Engine"
+        title="Auto-Gen Engine"
         size="md"
         footer={
           <>
@@ -565,7 +507,7 @@ export default function QuestionBank() {
         <form onSubmit={handleAIGenerate} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', padding: '10px 14px', borderRadius: 12, border: '1px solid var(--border-color)', background: 'var(--bg-card-header)' }}>
             <Cpu size={16} style={{ color: 'var(--color-brand)' }} />
-            <span style={{ fontSize: 13 }}>Seeding AI interview template for: <strong>{activeBank?.domain?.name}</strong></span>
+            <span style={{ fontSize: 13 }}>Seeding assessment template for: <strong>{activeBank?.domain?.name}</strong></span>
           </div>
 
           <Select label="Cognitive Difficulty" value={aiForm.difficulty} onChange={e => setAiForm({ ...aiForm, difficulty: e.target.value })}>

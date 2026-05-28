@@ -15,7 +15,7 @@ export function Header({ onMenuToggle }) {
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore();
   const { user, clearAuth } = useAuthStore();
   const { fetchConfigs } = useConfigStore();
-  
+
   const [showNotif, setShowNotif] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);

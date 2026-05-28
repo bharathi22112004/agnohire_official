@@ -11,7 +11,7 @@ export const authController = {
       const ipAddress = req.ip;
 
       const result = await authService.login(email, password, deviceInfo, ipAddress);
-      
+
       // Set refresh token as httpOnly cookie
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,
@@ -81,7 +81,7 @@ export const authController = {
     try {
       const { idToken, accessToken: googleAccessToken } = req.body;
       let payload;
-      
+
       if (idToken) {
         const { OAuth2Client } = await import('google-auth-library');
         const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -100,7 +100,7 @@ export const authController = {
 
       const { email, name, sub: googleId, picture } = payload;
 
-      let user = await prisma.user.findUnique({ 
+      let user = await prisma.user.findUnique({
         where: { email },
         include: { role: true, sector: true }
       });
